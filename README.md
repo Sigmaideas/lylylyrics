@@ -4,7 +4,7 @@
 타이포그래피로 보여주는 [Cotodama Lyric Speaker](https://cotodama-speaker.com/) 스타일
 웹 비주얼라이저입니다. 전체화면 지원.
 
-**▶ 라이브: https://sigmaideas.github.io/**
+**▶ 라이브: https://sigmaideas.github.io/lylylyrics/**
 
 ## 동작 방식
 
@@ -37,6 +37,8 @@ python3 -m http.server 8080
 ## 배포 (GitHub Pages)
 
 `main` 브랜치 루트를 Pages 소스로 설정하면 끝입니다. 별도 빌드 없음.
+프로젝트 저장소(`lylylyrics`)라 `https://sigmaideas.github.io/lylylyrics/` 에서 서빙되며,
+자산은 하위 경로에서도 동작하도록 상대경로로 참조합니다.
 
 ## 한계
 
