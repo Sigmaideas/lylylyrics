@@ -1,0 +1,7 @@
+.wrangler/
+.playwright-mcp/
+node_modules/
+.DS_Store
+*.log
+
+.claude/

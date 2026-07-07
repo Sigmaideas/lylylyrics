@@ -1,0 +1,9 @@
+{
+  "name": "lylylyrics",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cotodama-style real-time animated lyric visualizer for YouTube links (static site)",
+  "scripts": {
+    "dev": "npx --yes serve -l 8080 ."
+  }
+}

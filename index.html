@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>lylylyrics — 가사 비주얼라이저</title>
+    <meta name="description" content="유튜브 링크로 가사를 실시간 애니메이션으로 보여주는 Cotodama 스타일 비주얼라이저" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@300;500;700;900&family=Poppins:ital,wght@0,600;0,800;1,700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <!-- animated background -->
+    <canvas id="viz"></canvas>
+    <div class="vignette"></div>
+
+    <!-- start / input screen -->
+    <section id="start" class="screen">
+      <div class="start-card">
+        <h1 class="logo">lyly<span>lyrics</span></h1>
+        <p class="tagline">유튜브 링크 → 실시간 가사 비주얼라이제이션</p>
+
+        <label class="field">
+          <span>유튜브 / 유튜브뮤직 링크</span>
+          <input
+            id="url"
+            type="url"
+            inputmode="url"
+            placeholder="https://music.youtube.com/watch?v=..."
+            autocomplete="off"
+          />
+        </label>
+
+        <details class="advanced">
+          <summary>가사를 못 찾을 때 — 곡 정보 직접 입력</summary>
+          <div class="adv-grid">
+            <label class="field">
+              <span>아티스트</span>
+              <input id="artist" type="text" placeholder="예: IU" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span>곡 제목</span>
+              <input id="track" type="text" placeholder="예: 밤편지" autocomplete="off" />
+            </label>
+          </div>
+        </details>
+
+        <button id="go" class="go">시작하기</button>
+        <p id="status" class="status"></p>
+      </div>
+    </section>
+
+    <!-- lyric stage -->
+    <main id="stage" class="stage hidden">
+      <div id="lyrics" class="lyrics">
+        <div class="line prev" data-slot="prev"></div>
+        <div class="line current" data-slot="current"></div>
+        <div class="line next" data-slot="next"></div>
+        <div class="line next2" data-slot="next2"></div>
+      </div>
+      <div id="nowPlaying" class="now-playing"></div>
+    </main>
+
+    <!-- floating controls (auto-hide) -->
+    <div id="controls" class="controls">
+      <button id="playPause" class="ctrl" title="재생/일시정지">⏸</button>
+      <div id="track-info" class="track-info"></div>
+      <button id="fullscreen" class="ctrl" title="전체화면">⤢</button>
+      <button id="reset" class="ctrl" title="다른 곡">✕</button>
+    </div>
+
+    <!-- hidden youtube audio host -->
+    <div id="player-host"><div id="player"></div></div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

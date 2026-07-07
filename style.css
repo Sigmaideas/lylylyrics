@@ -1,0 +1,376 @@
+:root {
+  --bg: #05060a;
+  --accent: #ff3d81;
+  --accent2: #6a5cff;
+  --accent3: #2de2e6;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: #fff;
+  font-family: "Noto Sans KR", "Poppins", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#viz {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 0;
+}
+
+.vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 40%,
+    rgba(0, 0, 0, 0.55) 100%
+  );
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ---------- start screen ---------- */
+.screen {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.start-card {
+  width: min(560px, 100%);
+  background: rgba(14, 16, 26, 0.55);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  padding: 40px 36px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+}
+
+.logo {
+  font-family: "Poppins", sans-serif;
+  font-weight: 800;
+  font-size: clamp(38px, 7vw, 56px);
+  letter-spacing: -2px;
+  line-height: 1;
+  background: linear-gradient(100deg, var(--accent), var(--accent2), var(--accent3));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.logo span {
+  opacity: 0.65;
+}
+
+.tagline {
+  margin: 10px 0 28px;
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 300;
+  font-size: 15px;
+}
+
+.field {
+  display: block;
+  margin-bottom: 16px;
+}
+.field span {
+  display: block;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+.field input {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 16px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.field input:focus {
+  border-color: var(--accent2);
+  box-shadow: 0 0 0 3px rgba(106, 92, 255, 0.25);
+}
+
+.advanced {
+  margin-bottom: 20px;
+}
+.advanced summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.45);
+  user-select: none;
+  padding: 6px 0;
+}
+.advanced summary:hover {
+  color: rgba(255, 255, 255, 0.7);
+}
+.adv-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+.adv-grid .field {
+  margin-bottom: 0;
+}
+
+.go {
+  width: 100%;
+  padding: 16px;
+  border: none;
+  border-radius: 14px;
+  font-size: 17px;
+  font-weight: 700;
+  font-family: inherit;
+  color: #fff;
+  cursor: pointer;
+  background: linear-gradient(100deg, var(--accent), var(--accent2));
+  background-size: 200% 200%;
+  transition: transform 0.15s, box-shadow 0.2s, background-position 0.6s;
+  box-shadow: 0 14px 40px rgba(255, 61, 129, 0.35);
+}
+.go:hover {
+  transform: translateY(-2px);
+  background-position: 100% 0;
+}
+.go:active {
+  transform: translateY(0);
+}
+.go:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.status {
+  margin-top: 14px;
+  min-height: 18px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+  text-align: center;
+}
+.status.error {
+  color: #ff6b8a;
+}
+
+/* ---------- lyric stage ---------- */
+.stage {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  padding: 6vw;
+}
+
+.lyrics {
+  width: 100%;
+  max-width: 1100px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(10px, 2vh, 26px);
+  align-items: center;
+}
+
+.line {
+  font-family: "Black Han Sans", "Noto Sans KR", sans-serif;
+  font-weight: 900;
+  line-height: 1.12;
+  transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+    filter 0.5s ease;
+  will-change: transform, opacity, filter;
+  word-break: keep-all;
+}
+
+.line.current {
+  font-size: clamp(34px, 6.4vw, 92px);
+  background: linear-gradient(
+    100deg,
+    var(--accent),
+    var(--accent2) 50%,
+    var(--accent3)
+  );
+  background-size: 220% 220%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 6px 30px rgba(255, 61, 129, 0.35));
+  animation: hue 12s linear infinite, pop 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.line.prev,
+.line.next,
+.line.next2 {
+  font-size: clamp(18px, 2.6vw, 34px);
+  color: rgba(255, 255, 255, 0.32);
+  filter: blur(0.3px);
+}
+.line.prev {
+  opacity: 0.5;
+  transform: translateY(-6px) scale(0.96);
+}
+.line.next {
+  opacity: 0.5;
+}
+.line.next2 {
+  opacity: 0.22;
+  font-size: clamp(15px, 2vw, 26px);
+}
+
+/* per-word reveal for the current line */
+.line.current .w {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(0.5em) rotateX(40deg);
+  animation: wordIn 0.5s forwards cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.instrumental .line.current {
+  font-family: "Poppins", sans-serif;
+  letter-spacing: 4px;
+}
+
+@keyframes wordIn {
+  to {
+    opacity: 1;
+    transform: translateY(0) rotateX(0);
+  }
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(0.92);
+  }
+  60% {
+    transform: scale(1.03);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes hue {
+  to {
+    background-position: 220% 0;
+  }
+}
+
+.now-playing {
+  position: fixed;
+  bottom: 4vh;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.3);
+  z-index: 4;
+  pointer-events: none;
+}
+
+/* ---------- controls ---------- */
+.controls {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 16px;
+  background: rgba(10, 12, 20, 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 0.4s, transform 0.4s;
+  pointer-events: none;
+}
+.controls.show {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.controls.idle {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ctrl {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+.ctrl:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+.ctrl:active {
+  transform: scale(0.92);
+}
+
+.track-info {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.65);
+  max-width: 240px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 0 4px;
+}
+
+/* keep the youtube iframe present (audio) but out of sight */
+#player-host {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  left: -9999px;
+  top: -9999px;
+  overflow: hidden;
+  opacity: 0.01;
+  pointer-events: none;
+}
+
+@media (max-width: 600px) {
+  .adv-grid {
+    grid-template-columns: 1fr;
+  }
+  .track-info {
+    display: none;
+  }
+}
