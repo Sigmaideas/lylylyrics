@@ -182,7 +182,32 @@ async function fetchLyrics({ artist, track, author, duration }) {
   );
 
   const best = hits.find((x) => x && x.syncedLyrics) || hits.find((x) => x && x.plainLyrics);
-  return best ? pick(best) : null;
+  if (best) return pick(best);
+
+  // 3) LRCLIB missed — fall back to NetEase (via our proxy), which covers a lot
+  //    of Korean / indie tracks LRCLIB doesn't have.
+  return fetchNetease({ artist, track, duration });
+}
+
+const LYRICS_PROXY = "https://lylylyrics-proxy.sigmaidea.workers.dev";
+
+async function fetchNetease({ artist, track, duration }) {
+  try {
+    const p = new URLSearchParams();
+    if (artist) p.set("artist", artist);
+    if (track) p.set("track", track);
+    if (duration) p.set("duration", String(Math.round(duration)));
+    p.set("q", `${artist} ${track}`.trim());
+    const r = await fetch(`${LYRICS_PROXY}/netease?${p}`);
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (d && (d.syncedLyrics || d.plainLyrics)) {
+      return { syncedLyrics: d.syncedLyrics || "", plainLyrics: d.plainLyrics || "" };
+    }
+  } catch {
+    /* proxy unreachable — stay silent, caller shows "not found" */
+  }
+  return null;
 }
 
 /* Parse standard LRC: lines like "[mm:ss.xx] text", possibly multi-timestamp. */

@@ -1,0 +1,8 @@
+{
+  // Tiny CORS proxy so the static site can reach NetEase (网易云) lyrics, which
+  // has far better Korean coverage than LRCLIB but sends no CORS headers.
+  "name": "lylylyrics-proxy",
+  "main": "src/index.js",
+  "compatibility_date": "2025-01-15",
+  "observability": { "enabled": true }
+}
