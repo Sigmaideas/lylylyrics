@@ -1,8 +1,10 @@
 :root {
-  --bg: #05060a;
-  --accent: #ff3d81;
-  --accent2: #6a5cff;
-  --accent3: #2de2e6;
+  /* Cotodama-style monochrome + a single point colour */
+  --bg: #060606;
+  --ink: #f4f2ee; /* near-white text */
+  --dim: rgba(244, 242, 238, 0.34); /* secondary fragments */
+  --faint: rgba(244, 242, 238, 0.14); /* background lines */
+  --accent: #ff3b30; /* the one point colour (used sparingly) */
   color-scheme: dark;
 }
 
@@ -75,13 +77,10 @@ body {
   font-size: clamp(38px, 7vw, 56px);
   letter-spacing: -2px;
   line-height: 1;
-  background: linear-gradient(100deg, var(--accent), var(--accent2), var(--accent3));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--ink);
 }
 .logo span {
-  opacity: 0.65;
+  color: var(--accent);
 }
 
 .tagline {
@@ -115,8 +114,8 @@ body {
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .field input:focus {
-  border-color: var(--accent2);
-  box-shadow: 0 0 0 3px rgba(106, 92, 255, 0.25);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 59, 48, 0.22);
 }
 
 .advanced {
@@ -152,14 +151,13 @@ body {
   font-family: inherit;
   color: #fff;
   cursor: pointer;
-  background: linear-gradient(100deg, var(--accent), var(--accent2));
-  background-size: 200% 200%;
-  transition: transform 0.15s, box-shadow 0.2s, background-position 0.6s;
-  box-shadow: 0 14px 40px rgba(255, 61, 129, 0.35);
+  background: var(--accent);
+  transition: transform 0.15s, box-shadow 0.2s, filter 0.2s;
+  box-shadow: 0 14px 40px rgba(255, 59, 48, 0.32);
 }
 .go:hover {
   transform: translateY(-2px);
-  background-position: 100% 0;
+  filter: brightness(1.08);
 }
 .go:active {
   transform: translateY(0);
@@ -180,149 +178,120 @@ body {
   color: #ff6b8a;
 }
 
-/* ---------- lyric stage ---------- */
+/* ---------- lyric stage — Cotodama-style scattered kinetic typography ---------- */
 .stage {
   position: fixed;
   inset: 0;
   z-index: 4;
 }
 
-/* all active/exiting lines stack in the same centered cell so an outgoing line
-   and an incoming line can animate simultaneously */
+/* full-viewport canvas; fragments are absolutely positioned inside */
 .lyrics {
   position: fixed;
   inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 3vw;
   z-index: 4;
+  overflow: hidden;
 }
 
-.lyric-line {
-  grid-area: 1 / 1;
-  justify-self: center;
-  align-self: center;
-  max-width: 96vw;
-  text-align: center;
+/* one lyric fragment, placed at (--x,--y) and tilted by --rot */
+.frag {
+  position: absolute;
+  left: var(--x, 50%);
+  top: var(--y, 50%);
+  transform: translate(-50%, -50%) rotate(var(--rot, 0deg));
+  max-width: 82vw;
+  text-align: var(--align, center);
+  line-height: 1;
   font-weight: 900;
-  line-height: 1.02;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
   word-break: keep-all;
-  font-size: clamp(44px, 10.5vw, 190px);
-  will-change: transform, opacity, filter;
-  animation: breathe 5s ease-in-out infinite;
 }
-
-/* gradient fill + animated hue sweep, shared by all lines */
-.lyric-line {
-  background: linear-gradient(100deg, var(--accent), var(--accent2) 50%, var(--accent3));
-  background-size: 260% 260%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 8px 44px rgba(255, 61, 129, 0.32));
-}
-
-/* per-character wrapper */
-.lyric-line .c {
+.frag .inner {
   display: inline-block;
-  animation: hue 9s linear infinite;
-  background: inherit;
-  -webkit-background-clip: text;
-  background-clip: text;
+  will-change: opacity, translate, scale, filter;
+}
+
+/* colour roles (monochrome + one accent) */
+.frag.c-hero { color: var(--ink); }
+.frag.c-dim {
+  color: var(--dim);
+  font-weight: 700;
+}
+.frag.c-accent { color: var(--accent); }
+.frag.c-outline {
   color: transparent;
+  -webkit-text-stroke: 1.5px var(--dim);
+  text-stroke: 1.5px var(--dim);
 }
 
-/* the small hint of the upcoming line */
-.next-preview {
-  position: fixed;
-  bottom: 11vh;
-  left: 0;
-  right: 0;
-  text-align: center;
-  font-family: "Noto Sans KR", sans-serif;
-  font-weight: 500;
-  font-size: clamp(14px, 2.2vw, 26px);
-  color: rgba(255, 255, 255, 0.28);
-  padding: 0 6vw;
-  z-index: 4;
-  pointer-events: none;
-  opacity: 0;
-  transform: translateY(6px);
-  transition: opacity 0.5s ease, transform 0.5s ease;
-  word-break: keep-all;
-}
-.next-preview.show {
-  opacity: 1;
-  transform: translateY(0);
+/* size tiers */
+.frag.s-xl { font-size: clamp(48px, 10vw, 180px); }
+.frag.s-l  { font-size: clamp(32px, 6vw, 100px); }
+.frag.s-m  { font-size: clamp(22px, 3.4vw, 52px); }
+.frag.s-s  {
+  font-size: clamp(15px, 2vw, 30px);
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
-/* instrumental / intro placeholder */
-.lyric-line.note {
-  font-family: "Poppins", sans-serif;
-  font-size: clamp(60px, 14vw, 200px);
-  animation: breathe 3.4s ease-in-out infinite, spin 14s linear infinite;
-}
-
-/* ---------- font pool (assigned per line in JS) ---------- */
+/* ---------- font pool (assigned per fragment in JS) ---------- */
 .f-han     { font-family: "Black Han Sans", sans-serif; }
 .f-jua     { font-family: "Jua", sans-serif; }
 .f-dohyeon { font-family: "Do Hyeon", sans-serif; }
 .f-gugi    { font-family: "Gugi", sans-serif; }
-.f-song    { font-family: "Song Myung", serif; font-weight: 400; letter-spacing: 0.02em; }
-.f-pen     { font-family: "Nanum Pen Script", cursive; font-size: clamp(60px, 15vw, 240px); }
+.f-song    { font-family: "Song Myung", serif; font-weight: 400; letter-spacing: 0.01em; }
+.f-pen     { font-family: "Nanum Pen Script", cursive; }
 .f-gamja   { font-family: "Gamja Flower", cursive; }
 .f-gaegu   { font-family: "Gaegu", cursive; }
 .f-stylish { font-family: "Stylish", sans-serif; font-weight: 400; }
-.f-dokdo   { font-family: "Dokdo", cursive; font-size: clamp(56px, 13vw, 230px); }
+.f-dokdo   { font-family: "Dokdo", cursive; }
 
-/* ---------- gradient palettes (per line) ---------- */
-.g1 { background-image: linear-gradient(100deg, #ff3d81, #6a5cff 50%, #2de2e6); }
-.g2 { background-image: linear-gradient(100deg, #ffb03b, #ff3d81 55%, #b14bff); }
-.g3 { background-image: linear-gradient(100deg, #2de2e6, #4bafff 45%, #a45cff); }
-.g4 { background-image: linear-gradient(100deg, #ff6ec4, #7873f5 55%, #4ade80); }
-.g5 { background-image: linear-gradient(100deg, #f9d423, #ff4e50 55%, #ff3d81); }
-
-/* ---------- entrance animations (on chars, staggered) ---------- */
-.en-up .c     { animation: hue 9s linear infinite, cUp 0.6s both cubic-bezier(0.2, 1.1, 0.3, 1); }
-.en-zoom .c   { animation: hue 9s linear infinite, cZoom 0.55s both cubic-bezier(0.2, 1.3, 0.35, 1); }
-.en-blur .c   { animation: hue 9s linear infinite, cBlur 0.7s both ease-out; }
-.en-drop .c   { animation: hue 9s linear infinite, cDrop 0.6s both cubic-bezier(0.2, 1.2, 0.3, 1); }
-.en-spin .c   { animation: hue 9s linear infinite, cSpin 0.6s both cubic-bezier(0.2, 1.1, 0.3, 1); }
-.en-wave .c   { animation: hue 9s linear infinite, cWave 0.7s both cubic-bezier(0.2, 1.1, 0.3, 1); }
-
-@keyframes cUp   { from { opacity: 0; transform: translateY(0.9em) rotateX(-50deg); } }
-@keyframes cZoom { from { opacity: 0; transform: scale(0.2); } }
-@keyframes cBlur { from { opacity: 0; filter: blur(16px); transform: scale(1.3); } }
-@keyframes cDrop { from { opacity: 0; transform: translateY(-0.9em) scale(1.4); } }
-@keyframes cSpin { from { opacity: 0; transform: rotate(-28deg) scale(0.4) translateY(0.4em); } }
-@keyframes cWave { from { opacity: 0; transform: translateX(-0.5em) skewX(18deg); } }
-
-/* ---------- exit animations (whole line) ---------- */
-.lyric-line.exit { animation: none; }
-.ex-up   { animation: exUp   0.55s forwards cubic-bezier(0.5, 0, 0.75, 0) !important; }
-.ex-zoom { animation: exZoom 0.55s forwards cubic-bezier(0.5, 0, 0.75, 0) !important; }
-.ex-fade { animation: exFade 0.5s  forwards ease-in !important; }
-.ex-down { animation: exDown 0.55s forwards cubic-bezier(0.5, 0, 0.75, 0) !important; }
-
-@keyframes exUp   { to { opacity: 0; transform: translateY(-0.5em) scale(1.08); filter: blur(14px); } }
-@keyframes exZoom { to { opacity: 0; transform: scale(1.35); filter: blur(12px); } }
-@keyframes exFade { to { opacity: 0; transform: scale(0.9); filter: blur(6px); } }
-@keyframes exDown { to { opacity: 0; transform: translateY(0.5em) scale(0.9); filter: blur(12px); } }
-
-@keyframes breathe {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.035); }
+/* ---------- entrance / exit ---------- */
+/* secondary fragments fade/drift in as a block */
+.frag:not(.hero) .inner {
+  animation: fragIn 0.7s both cubic-bezier(0.2, 0.9, 0.3, 1);
 }
+/* hero reveals character-by-character (stagger set inline) */
+.frag.hero .c {
+  display: inline-block;
+  opacity: 0;
+  animation: cUp 0.55s both cubic-bezier(0.2, 1, 0.3, 1);
+}
+
+/* every fragment exits together when the line changes */
+.frag.out .inner {
+  animation: fragOut 0.55s forwards cubic-bezier(0.5, 0, 0.7, 0) !important;
+}
+.frag.out .c {
+  animation: none !important;
+}
+
+@keyframes fragIn {
+  from { opacity: 0; translate: 0 0.5em; scale: 0.94; filter: blur(6px); }
+  to   { opacity: 1; translate: 0 0;    scale: 1;    filter: blur(0); }
+}
+@keyframes fragOut {
+  to { opacity: 0; translate: 0 -0.35em; scale: 1.06; filter: blur(10px); }
+}
+@keyframes cUp {
+  from { opacity: 0; transform: translateY(0.75em) rotate(5deg); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* instrumental / intro placeholder */
+.frag.note {
+  font-family: "Poppins", sans-serif;
+}
+.frag.note .inner {
+  animation: fragIn 0.7s both, spin 18s linear infinite;
+}
+
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
-@keyframes hue {
-  to { background-position: 260% 0; }
-}
 
 @media (prefers-reduced-motion: reduce) {
-  .lyric-line, .lyric-line .c { animation: none !important; }
+  .frag .inner, .frag .c { animation-duration: 0.001s !important; }
 }
 
 .now-playing {

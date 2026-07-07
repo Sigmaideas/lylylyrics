@@ -17,7 +17,6 @@ const els = {
   go: $("go"),
   status: $("status"),
   lyrics: $("lyrics"),
-  nextPreview: $("nextPreview"),
   nowPlaying: $("nowPlaying"),
   controls: $("controls"),
   playPause: $("playPause"),
@@ -373,16 +372,18 @@ function tickLyrics() {
   const idx = findIndex(t);
   if (idx !== state.index) {
     state.index = idx;
-    showLine(idx);
+    showComposition(idx);
     viz.pulse(); // surge the visualization on each new line
   }
 }
 
 /* ------------------------------------------------------------------ *
- * Lyric rendering — ONE active line at a time. A line highlights (enters)
- * when its part starts and animates out when the next part begins. Each
- * line gets a font, gradient and entrance/exit style picked deterministically
- * so consecutive lines always differ.
+ * Lyric rendering — Cotodama-style scattered composition.
+ * On each new line we lay out the current line (hero) plus the previous and
+ * next lines as smaller, tilted fragments at varied positions, then animate
+ * the whole set in; the old set animates out. Fonts, sizes, angles, positions
+ * and the single accent colour are picked deterministically per line so the
+ * composition keeps changing but never turns to noise.
  * ------------------------------------------------------------------ */
 function lineText(i) {
   return i >= 0 && i < state.lines.length ? state.lines[i].text : "";
@@ -392,97 +393,153 @@ const FONTS = [
   "f-han", "f-jua", "f-dohyeon", "f-gugi", "f-song",
   "f-pen", "f-gamja", "f-gaegu", "f-stylish", "f-dokdo",
 ];
-const ENTER = ["en-up", "en-zoom", "en-blur", "en-drop", "en-spin", "en-wave"];
-const EXIT = ["ex-up", "ex-zoom", "ex-fade", "ex-down"];
-const GRADS = ["g1", "g2", "g3", "g4", "g5"];
 // deterministic per-line pick, decorrelated per attribute
 const pk = (i, mul, add, len) => (((i * mul + add) % len) + len) % len;
 
-let activeEl = null;
+// composition templates: placement of [hero, next, prev] fragments.
+// x/y are viewport %, rot in degrees (occasionally ~180 for flipped text).
+const LAYOUTS = [
+  { hero: { x: 34, y: 45, rot: -5, align: "left" },   next: { x: 71, y: 21, rot: 6, align: "left" },    prev: { x: 63, y: 79, rot: -177, align: "left" } },
+  { hero: { x: 57, y: 52, rot: 4, align: "left" },    next: { x: 25, y: 25, rot: -8, align: "left" },   prev: { x: 74, y: 83, rot: 3, align: "right" } },
+  { hero: { x: 49, y: 41, rot: 0, align: "center" },  next: { x: 29, y: 74, rot: 5, align: "left" },    prev: { x: 77, y: 22, rot: 183, align: "left" } },
+  { hero: { x: 39, y: 58, rot: 6, align: "left" },    next: { x: 71, y: 37, rot: -4, align: "left" },   prev: { x: 31, y: 17, rot: -6, align: "left" } },
+  { hero: { x: 61, y: 47, rot: -7, align: "left" },   next: { x: 30, y: 66, rot: 4, align: "left" },    prev: { x: 35, y: 22, rot: 178, align: "left" } },
+  { hero: { x: 46, y: 50, rot: -3, align: "center" }, next: { x: 74, y: 73, rot: 8, align: "left" },    prev: { x: 21, y: 30, rot: -4, align: "left" } },
+];
+// hero colour cycle: mostly white, occasional accent, occasional outline
+const HERO_COLOR = ["c-hero", "c-hero", "c-accent", "c-outline", "c-hero"];
+
+let activeFrags = [];
 let shownIdx = -2;
 
-function splitChars(el, text) {
-  el.textContent = "";
-  const chars = [...text];
-  const stagger = Math.min(65, 700 / Math.max(1, chars.length));
-  let ci = 0;
-  for (const ch of chars) {
-    if (ch === " ") {
-      el.appendChild(document.createTextNode(" "));
-      continue;
+function makeFrag(text, spec, { role, color, font, size }) {
+  const el = document.createElement("div");
+  el.className = ["frag", role === "hero" ? "hero" : "", size, color, font]
+    .filter(Boolean)
+    .join(" ");
+  el.style.setProperty("--x", spec.x + "%");
+  el.style.setProperty("--y", spec.y + "%");
+  el.style.setProperty("--rot", spec.rot + "deg");
+  el.style.setProperty("--align", spec.align);
+
+  const inner = document.createElement("span");
+  inner.className = "inner";
+  if (role === "hero") {
+    // character-by-character reveal
+    const chars = [...text];
+    const stagger = Math.min(55, 620 / Math.max(1, chars.length));
+    let ci = 0;
+    for (const ch of chars) {
+      if (ch === " ") {
+        inner.appendChild(document.createTextNode(" "));
+        continue;
+      }
+      const s = document.createElement("span");
+      s.className = "c";
+      s.textContent = ch;
+      s.style.animationDelay = Math.round(ci * stagger) + "ms";
+      inner.appendChild(s);
+      ci++;
     }
-    const s = document.createElement("span");
-    s.className = "c";
-    s.textContent = ch;
-    // two animations on each char: hue (delay 0) + staggered entrance
-    s.style.animationDelay = `0s, ${Math.round(ci * stagger)}ms`;
-    el.appendChild(s);
-    ci++;
+  } else {
+    inner.textContent = text;
   }
+  el.appendChild(inner);
+  return el;
 }
 
-function retireLine(el, idx) {
-  if (!el) return;
-  el.classList.remove(...ENTER);
-  el.classList.add("exit", EXIT[pk(idx, 11, 0, EXIT.length)]);
-  el.addEventListener("animationend", () => el.remove(), { once: true });
-  setTimeout(() => el.remove(), 900); // safety net if animationend is missed
+function retireFrags() {
+  for (const el of activeFrags) {
+    el.classList.add("out");
+    el.addEventListener("animationend", () => el.remove(), { once: true });
+    setTimeout(() => el.remove(), 800); // safety net
+  }
+  activeFrags = [];
 }
 
-function showLine(i) {
+function buildNote() {
+  const el = document.createElement("div");
+  el.className = "frag note s-xl c-dim";
+  el.style.setProperty("--x", "50%");
+  el.style.setProperty("--y", "48%");
+  el.style.setProperty("--rot", "0deg");
+  el.style.setProperty("--align", "center");
+  const inner = document.createElement("span");
+  inner.className = "inner";
+  inner.textContent = "♪";
+  el.appendChild(inner);
+  els.lyrics.appendChild(el);
+  activeFrags.push(el);
+}
+
+function showComposition(i) {
   if (i === shownIdx) return;
   shownIdx = i;
+  retireFrags();
 
-  retireLine(activeEl, i);
-  activeEl = null;
-  updateNext(i);
-
-  const text = lineText(i);
-  if (!text) {
-    showNote(); // intro / instrumental placeholder
+  const hero = lineText(i);
+  if (!hero) {
+    buildNote(); // intro (before first line) or instrumental
     return;
   }
 
-  const el = document.createElement("div");
-  el.className =
-    `lyric-line ${FONTS[pk(i, 7, 0, FONTS.length)]} ` +
-    `${GRADS[pk(i, 5, 2, GRADS.length)]} ${ENTER[pk(i, 3, 1, ENTER.length)]}`;
-  splitChars(el, text);
-  els.lyrics.appendChild(el);
-  activeEl = el;
-}
+  const L = LAYOUTS[pk(i, 1, 0, LAYOUTS.length)];
+  const heroSize = [...hero].length > 16 ? "s-l" : "s-xl";
 
-function showNote() {
-  const el = document.createElement("div");
-  el.className = "lyric-line note g3";
-  el.textContent = "♪";
-  els.lyrics.appendChild(el);
-  activeEl = el;
-}
+  // hero (current line)
+  activeFrags.push(
+    makeFrag(hero, L.hero, {
+      role: "hero",
+      color: HERO_COLOR[pk(i, 1, 0, HERO_COLOR.length)],
+      font: FONTS[pk(i, 7, 0, FONTS.length)],
+      size: heroSize,
+    })
+  );
+  // next line (secondary)
+  const next = lineText(i + 1);
+  if (next) {
+    activeFrags.push(
+      makeFrag(next, L.next, {
+        role: "sec",
+        color: "c-dim",
+        font: FONTS[pk(i, 3, 4, FONTS.length)],
+        size: "s-m",
+      })
+    );
+  }
+  // previous line (tertiary)
+  const prev = lineText(i - 1);
+  if (prev) {
+    activeFrags.push(
+      makeFrag(prev, L.prev, {
+        role: "sec",
+        color: "c-dim",
+        font: FONTS[pk(i, 5, 2, FONTS.length)],
+        size: "s-s",
+      })
+    );
+  }
 
-function updateNext(i) {
-  const nxt = lineText(i + 1);
-  els.nextPreview.textContent = nxt;
-  els.nextPreview.classList.toggle("show", !!nxt);
+  for (const el of activeFrags) els.lyrics.appendChild(el);
 }
 
 function clearLines() {
   els.lyrics.innerHTML = "";
-  activeEl = null;
+  activeFrags = [];
   shownIdx = -2;
-  els.nextPreview.classList.remove("show");
 }
 
-// initial paint: instrumental -> ♪; otherwise intro note + upcoming preview
+// initial paint: instrumental -> ♪; otherwise intro note until the first line
 function paintInitial() {
   clearLines();
   state.index = -1;
-  if (state.instrumental) showNote();
-  else showLine(-1);
+  showComposition(-1); // hero text empty -> ♪ intro
 }
 
 /* ------------------------------------------------------------------ *
- * Visualization (animated gradient blobs + particle field)
+ * Visualization — minimal monochrome motion graphics (Cotodama-like):
+ * a concentric ring "dial" with rotating ticks, a slow radar sweep, sparse
+ * drifting dots, and expanding rings pulsed on each lyric change.
  * ------------------------------------------------------------------ */
 const viz = (() => {
   const canvas = $("viz");
@@ -491,15 +548,10 @@ const viz = (() => {
     h = 0,
     dpr = 1;
   let energy = 0; // decays; bumped on each lyric line
-  const particles = [];
-  const blobs = [];
+  const dots = [];
+  const rings = []; // expanding pulse rings
 
-  const PALETTE = [
-    [255, 61, 129],
-    [106, 92, 255],
-    [45, 226, 230],
-    [255, 176, 59],
-  ];
+  const ink = (a) => `rgba(244,242,238,${a})`;
 
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -513,115 +565,102 @@ const viz = (() => {
     return a + Math.random() * (b - a);
   }
 
-  function initParticles() {
-    particles.length = 0;
-    const count = Math.round((innerWidth * innerHeight) / 14000);
+  function initDots() {
+    dots.length = 0;
+    const count = Math.round((innerWidth * innerHeight) / 22000);
     for (let i = 0; i < count; i++) {
-      particles.push({
+      dots.push({
         x: rand(0, w),
         y: rand(0, h),
-        r: rand(0.6, 2.4) * dpr,
-        vx: rand(-0.15, 0.15) * dpr,
-        vy: rand(-0.5, -0.1) * dpr,
-        a: rand(0.1, 0.6),
-        c: PALETTE[(Math.random() * PALETTE.length) | 0],
-      });
-    }
-  }
-
-  function initBlobs() {
-    blobs.length = 0;
-    for (let i = 0; i < 4; i++) {
-      blobs.push({
-        baseX: rand(0.2, 0.8),
-        baseY: rand(0.2, 0.8),
-        ax: rand(0.1, 0.3),
-        ay: rand(0.1, 0.3),
-        sx: rand(0.05, 0.18),
-        sy: rand(0.05, 0.18),
-        ph: rand(0, Math.PI * 2),
-        c: PALETTE[i % PALETTE.length],
+        r: rand(0.5, 1.6) * dpr,
+        vx: rand(-0.06, 0.06) * dpr,
+        vy: rand(-0.35, -0.06) * dpr,
+        a: rand(0.05, 0.28),
       });
     }
   }
 
   function pulse() {
-    energy = Math.min(1.6, energy + 1);
-    // burst of particles from center
-    const cx = w / 2,
-      cy = h * 0.5;
-    const n = 18;
-    for (let i = 0; i < n; i++) {
-      const ang = (Math.PI * 2 * i) / n + rand(-0.2, 0.2);
-      const sp = rand(2, 6) * dpr;
-      particles.push({
-        x: cx,
-        y: cy,
-        r: rand(1.5, 3.5) * dpr,
-        vx: Math.cos(ang) * sp,
-        vy: Math.sin(ang) * sp,
-        a: 0.9,
-        decay: rand(0.012, 0.03),
-        c: PALETTE[(Math.random() * PALETTE.length) | 0],
-      });
-    }
-    // cap particle array
-    if (particles.length > 600) particles.splice(0, particles.length - 600);
+    energy = Math.min(1.5, energy + 1);
+    rings.push({ r: Math.min(w, h) * 0.06, a: 0.5 });
+    if (rings.length > 6) rings.shift();
   }
 
   let t0 = 0;
   function frame(ts) {
     if (!t0) t0 = ts;
     const time = (ts - t0) / 1000;
-    energy *= 0.96;
+    energy *= 0.95;
 
-    // background base
     ctx.globalCompositeOperation = "source-over";
-    ctx.fillStyle = "rgba(5, 6, 10, 0.35)";
+    ctx.fillStyle = "#060606";
     ctx.fillRect(0, 0, w, h);
 
-    // gradient blobs (additive glow)
-    ctx.globalCompositeOperation = "lighter";
-    for (const b of blobs) {
-      const x = (b.baseX + Math.sin(time * b.sx + b.ph) * b.ax) * w;
-      const y = (b.baseY + Math.cos(time * b.sy + b.ph) * b.ay) * h;
-      const rad = (Math.min(w, h) * 0.45) * (0.7 + energy * 0.35);
-      const g = ctx.createRadialGradient(x, y, 0, x, y, rad);
-      const [r, gg, bl] = b.c;
-      const alpha = 0.12 + energy * 0.1;
-      g.addColorStop(0, `rgba(${r},${gg},${bl},${alpha})`);
-      g.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = g;
+    const cx = w / 2,
+      cy = h / 2,
+      base = Math.min(w, h);
+
+    // concentric ring dial
+    ctx.lineWidth = 1 * dpr;
+    const R1 = base * (0.34 + energy * 0.015);
+    ctx.strokeStyle = ink(0.07 + energy * 0.06);
+    ctx.beginPath();
+    ctx.arc(cx, cy, R1, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = ink(0.04);
+    ctx.beginPath();
+    ctx.arc(cx, cy, base * 0.46, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // rotating ticks around the inner ring
+    const N = 60;
+    ctx.strokeStyle = ink(0.1 + energy * 0.08);
+    for (let i = 0; i < N; i++) {
+      const ang = time * 0.06 + (i / N) * Math.PI * 2;
+      const long = i % 5 === 0;
+      const r1 = R1 + (long ? 10 : 5) * dpr;
       ctx.beginPath();
-      ctx.arc(x, y, rad, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.moveTo(cx + Math.cos(ang) * R1, cy + Math.sin(ang) * R1);
+      ctx.lineTo(cx + Math.cos(ang) * r1, cy + Math.sin(ang) * r1);
+      ctx.stroke();
     }
 
-    // particles
-    const boost = 1 + energy * 1.4;
-    for (let i = particles.length - 1; i >= 0; i--) {
-      const p = particles[i];
-      p.x += p.vx * boost;
-      p.y += p.vy * boost;
-      if (p.decay) {
-        p.a -= p.decay;
-        if (p.a <= 0) {
-          particles.splice(i, 1);
-          continue;
-        }
-      } else {
-        // ambient particles wrap around
-        if (p.y < -10) {
-          p.y = h + 10;
-          p.x = rand(0, w);
-        }
-        if (p.x < -10) p.x = w + 10;
-        if (p.x > w + 10) p.x = -10;
+    // slow radar sweep
+    const sweep = time * 0.25;
+    ctx.strokeStyle = ink(0.05 + energy * 0.06);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(sweep) * R1, cy + Math.sin(sweep) * R1);
+    ctx.stroke();
+
+    // expanding pulse rings
+    for (let i = rings.length - 1; i >= 0; i--) {
+      const rg = rings[i];
+      rg.r += base * 0.01;
+      rg.a *= 0.94;
+      if (rg.a < 0.02) {
+        rings.splice(i, 1);
+        continue;
       }
-      const [r, g, b] = p.c;
-      ctx.fillStyle = `rgba(${r},${g},${b},${p.a})`;
+      ctx.strokeStyle = ink(rg.a * 0.5);
       ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r * (1 + energy * 0.5), 0, Math.PI * 2);
+      ctx.arc(cx, cy, rg.r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // drifting dots
+    for (const d of dots) {
+      d.x += d.vx * (1 + energy * 0.5);
+      d.y += d.vy * (1 + energy * 0.6);
+      if (d.y < -6) {
+        d.y = h + 6;
+        d.x = rand(0, w);
+      }
+      if (d.x < -6) d.x = w + 6;
+      if (d.x > w + 6) d.x = -6;
+      ctx.fillStyle = ink(d.a + energy * 0.1);
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -630,12 +669,11 @@ const viz = (() => {
 
   function init() {
     resize();
-    initParticles();
-    initBlobs();
+    initDots();
     requestAnimationFrame(frame);
     addEventListener("resize", () => {
       resize();
-      initParticles();
+      initDots();
     });
   }
 
