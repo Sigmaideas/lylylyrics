@@ -167,20 +167,26 @@ async function fetchLyrics({ artist, track, author, duration }) {
     author && track && author !== artist ? `${author} ${track}` : "",
   ];
 
-  for (const q of [...new Set(candidates.map((s) => (s || "").trim()).filter(Boolean))]) {
-    try {
-      const r = await fetch(`${base}/search?q=${encodeURIComponent(q)}`);
-      if (!r.ok) continue;
-      const arr = await r.json();
-      if (Array.isArray(arr) && arr.length) {
-        const best = arr.find((x) => x.syncedLyrics) || arr.find((x) => x.plainLyrics);
-        if (best) return pick(best);
+  const queries = [...new Set(candidates.map((s) => (s || "").trim()).filter(Boolean))];
+
+  // Fire all candidate searches at once (LRCLIB is ~3s/request), then prefer a
+  // synced hit from the earliest/most-specific query that matched.
+  const hits = await Promise.all(
+    queries.map(async (q) => {
+      try {
+        const r = await fetch(`${base}/search?q=${encodeURIComponent(q)}`);
+        if (!r.ok) return null;
+        const arr = await r.json();
+        if (!Array.isArray(arr) || !arr.length) return null;
+        return arr.find((x) => x.syncedLyrics) || arr.find((x) => x.plainLyrics) || null;
+      } catch {
+        return null;
       }
-    } catch {
-      /* try next query */
-    }
-  }
-  return null;
+    })
+  );
+
+  const best = hits.find((x) => x && x.syncedLyrics) || hits.find((x) => x && x.plainLyrics);
+  return best ? pick(best) : null;
 }
 
 /* Parse standard LRC: lines like "[mm:ss.xx] text", possibly multi-timestamp. */
