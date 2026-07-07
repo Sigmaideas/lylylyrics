@@ -127,7 +127,7 @@ async function fetchMeta(videoUrl) {
 }
 
 // LRCLIB (https://lrclib.net) is CORS-enabled, so we call it straight from the browser.
-async function fetchLyrics({ artist, track, duration }) {
+async function fetchLyrics({ artist, track, author, duration }) {
   const base = "https://lrclib.net/api";
   const pick = (d) => ({
     syncedLyrics: d.syncedLyrics || "",
@@ -149,18 +149,32 @@ async function fetchLyrics({ artist, track, duration }) {
     }
   }
 
-  // 2) fuzzy search fallback
-  const queries = [];
-  if (artist && track) queries.push(`${artist} ${track}`);
-  if (track) queries.push(track);
-  for (const q of [...new Set(queries.map((s) => s.trim()).filter(Boolean))]) {
+  // 2) fuzzy search. Long titles (esp. with translated subtitles) miss on the
+  //    full string, so try progressively shorter / more specific queries and
+  //    keep the first hit that has synced lyrics.
+  const words = (track || "").split(/\s+/).filter(Boolean);
+  const noParen = (track || "")
+    .replace(/[([{（【].*?[)\]}）】]/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  const candidates = [
+    `${artist} ${track}`,
+    track,
+    noParen && noParen !== track ? `${artist} ${noParen}` : "",
+    noParen && noParen !== track ? noParen : "",
+    words.length > 6 ? words.slice(0, 6).join(" ") : "",
+    words.length > 4 ? words.slice(0, 4).join(" ") : "",
+    author && track && author !== artist ? `${author} ${track}` : "",
+  ];
+
+  for (const q of [...new Set(candidates.map((s) => (s || "").trim()).filter(Boolean))]) {
     try {
       const r = await fetch(`${base}/search?q=${encodeURIComponent(q)}`);
       if (!r.ok) continue;
       const arr = await r.json();
       if (Array.isArray(arr) && arr.length) {
-        const best = arr.find((x) => x.syncedLyrics) || arr[0];
-        if (best && (best.syncedLyrics || best.plainLyrics)) return pick(best);
+        const best = arr.find((x) => x.syncedLyrics) || arr.find((x) => x.plainLyrics);
+        if (best) return pick(best);
       }
     } catch {
       /* try next query */
@@ -229,15 +243,17 @@ async function start() {
   // 1) figure out artist / track
   let artist = els.artist.value.trim();
   let track = els.track.value.trim();
+  let author = ""; // raw oEmbed channel name, used as an extra search fallback
   if (!artist || !track) {
     const meta = await fetchMeta(videoUrl);
     if (meta && meta.title) {
       const g = guessArtistTrack(meta.title, meta.author);
       artist = artist || g.artist;
       track = track || g.track;
+      author = meta.author || "";
     }
   }
-  state.meta = { artist, track };
+  state.meta = { artist, track, author };
 
   // 2) start the player (user gesture -> autoplay with sound allowed)
   setStatus("플레이어 준비 중…");
@@ -245,32 +261,33 @@ async function start() {
   await createPlayer(videoId);
   const duration = safeDuration();
 
-  // 3) lyrics
-  setStatus("가사를 찾는 중…");
-  let data = null;
-  try {
-    data = await fetchLyrics({ artist, track, duration });
-  } catch {
-    /* handled below */
-  }
-
-  applyLyrics(data, duration);
-
-  // 4) reveal stage
+  // 3) reveal the stage IMMEDIATELY — music is already playing. Lyrics load in
+  //    the background so a slow/failed search never leaves the user on a spinner.
   els.start.classList.add("hidden");
   els.stage.classList.remove("hidden");
-  document.body.classList.toggle("instrumental", state.instrumental);
   els.nowPlaying.textContent = [artist, track].filter(Boolean).join(" — ");
   els.trackInfo.textContent = [artist, track].filter(Boolean).join(" — ");
+  setInstrumental(true); // abstract visuals until (or unless) lyrics arrive
+  renderSlots();
   bumpControls();
   els.go.disabled = false;
+  setStatus("");
+
+  // 4) lyrics (background)
+  fetchLyrics({ artist, track, author, duration })
+    .then((data) => applyLyrics(data, duration))
+    .catch(() => applyLyrics(null, duration));
+}
+
+function setInstrumental(on) {
+  state.instrumental = on;
+  document.body.classList.toggle("instrumental", on);
 }
 
 function applyLyrics(data, duration) {
   state.lines = [];
   state.index = -1;
   state.hasSynced = false;
-  state.instrumental = false;
 
   if (data && data.syncedLyrics) {
     state.lines = parseLRC(data.syncedLyrics);
@@ -279,10 +296,8 @@ function applyLyrics(data, duration) {
   if (!state.lines.length && data && data.plainLyrics) {
     state.lines = estimateTiming(data.plainLyrics, duration);
   }
-  if (!state.lines.length) {
-    state.instrumental = true;
-    setStatus("");
-  }
+
+  setInstrumental(state.lines.length === 0);
   renderSlots(); // initial paint
 }
 
