@@ -417,10 +417,8 @@ function lineText(i) {
   return i >= 0 && i < state.lines.length ? state.lines[i].text : "";
 }
 
-// lighter / elegant pool (heavy ultra-bold faces removed)
-const FONTS = [
-  "f-jua", "f-song", "f-pen", "f-gamja", "f-gaegu", "f-stylish", "f-dokdo",
-];
+// single gothic font (Pretendard) — vary weight instead of family
+const HERO_WEIGHT = ["w-thin", "w-bold", "w-mid", "w-bold", "w-thin"];
 // continuous-motion styles
 const MOTION_HERO = ["m-zin", "m-zout", "m-sway"];
 const MOTION_SEC = ["m-sway", "m-orbit", "m-pulse", "m-zin"];
@@ -444,9 +442,9 @@ let activeFrags = [];
 let shownIdx = -2;
 let noteCaption = ""; // shown under ♪ when a search finished with no lyrics
 
-function makeFrag(text, spec, { role, color, font, size, motion }) {
+function makeFrag(text, spec, { role, color, weight, size, motion }) {
   const el = document.createElement("div");
-  el.className = ["frag", role === "hero" ? "hero" : "", size, color, font, motion]
+  el.className = ["frag", role === "hero" ? "hero" : "", size, color, weight, motion]
     .filter(Boolean)
     .join(" ");
   el.style.setProperty("--x", spec.x + "%");
@@ -546,7 +544,7 @@ function showComposition(i) {
     makeFrag(hero, L.hero, {
       role: "hero",
       color: HERO_COLOR[pk(i, 1, 0, HERO_COLOR.length)],
-      font: FONTS[pk(i, 7, 0, FONTS.length)],
+      weight: HERO_WEIGHT[pk(i, 1, 0, HERO_WEIGHT.length)],
       size: heroSize,
       motion: MOTION_HERO[pk(i, 2, 0, MOTION_HERO.length)],
     })
@@ -558,7 +556,7 @@ function showComposition(i) {
       makeFrag(next, L.next, {
         role: "sec",
         color: "c-dim",
-        font: FONTS[pk(i, 3, 4, FONTS.length)],
+        weight: "w-mid",
         size: "s-m",
         motion: MOTION_SEC[pk(i, 3, 1, MOTION_SEC.length)],
       })
@@ -571,7 +569,7 @@ function showComposition(i) {
       makeFrag(prev, L.prev, {
         role: "sec",
         color: "c-dim",
-        font: FONTS[pk(i, 5, 2, FONTS.length)],
+        weight: "w-thin",
         size: "s-s",
         motion: MOTION_SEC[pk(i, 5, 3, MOTION_SEC.length)],
       })
@@ -595,9 +593,10 @@ function paintInitial() {
 }
 
 /* ------------------------------------------------------------------ *
- * Visualization — minimal monochrome motion graphics (Cotodama-like):
- * a concentric ring "dial" with rotating ticks, a slow radar sweep, sparse
- * drifting dots, and expanding rings pulsed on each lyric change.
+ * Visualization — cyber node-graph network: drifting nodes connected by
+ * lines when close (a constellation / neural-net structure). A lyric change
+ * sends an energy shock that brightens edges, enlarges nodes and radiates
+ * an expanding ring. Monochrome with an occasional accent node.
  * ------------------------------------------------------------------ */
 const viz = (() => {
   const canvas = $("viz");
@@ -606,10 +605,12 @@ const viz = (() => {
     h = 0,
     dpr = 1;
   let energy = 0; // decays; bumped on each lyric line
-  const dots = [];
+  const nodes = [];
   const rings = []; // expanding pulse rings
+  let linkDist = 160;
 
   const ink = (a) => `rgba(244,242,238,${a})`;
+  const acc = (a) => `rgba(255,59,48,${a})`;
 
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -617,38 +618,37 @@ const viz = (() => {
     h = canvas.height = Math.floor(innerHeight * dpr);
     canvas.style.width = innerWidth + "px";
     canvas.style.height = innerHeight + "px";
+    linkDist = Math.min(w, h) * 0.16;
   }
 
   function rand(a, b) {
     return a + Math.random() * (b - a);
   }
 
-  function initDots() {
-    dots.length = 0;
-    const count = Math.round((innerWidth * innerHeight) / 22000);
+  function initNodes() {
+    nodes.length = 0;
+    const count = Math.min(120, Math.round((innerWidth * innerHeight) / 17000));
     for (let i = 0; i < count; i++) {
-      dots.push({
+      nodes.push({
         x: rand(0, w),
         y: rand(0, h),
-        r: rand(0.5, 1.6) * dpr,
-        vx: rand(-0.06, 0.06) * dpr,
-        vy: rand(-0.35, -0.06) * dpr,
-        a: rand(0.05, 0.28),
+        vx: rand(-0.22, 0.22) * dpr,
+        vy: rand(-0.22, 0.22) * dpr,
+        r: rand(1.1, 2.4) * dpr,
+        hub: Math.random() < 0.12, // brighter "hub" nodes
+        accent: Math.random() < 0.06, // rare accent node
       });
     }
   }
 
   function pulse() {
-    energy = Math.min(1.5, energy + 1);
-    rings.push({ r: Math.min(w, h) * 0.06, a: 0.5 });
+    energy = Math.min(1.6, energy + 1);
+    rings.push({ r: Math.min(w, h) * 0.04, a: 0.55 });
     if (rings.length > 6) rings.shift();
   }
 
-  let t0 = 0;
-  function frame(ts) {
-    if (!t0) t0 = ts;
-    const time = (ts - t0) / 1000;
-    energy *= 0.95;
+  function frame() {
+    energy *= 0.94;
 
     ctx.globalCompositeOperation = "source-over";
     ctx.fillStyle = "#060606";
@@ -657,69 +657,64 @@ const viz = (() => {
     const cx = w / 2,
       cy = h / 2,
       base = Math.min(w, h);
+    const speed = 1 + energy * 1.6;
+    const dist = linkDist * (1 + energy * 0.15);
 
-    // concentric ring dial
-    ctx.lineWidth = 1 * dpr;
-    const R1 = base * (0.34 + energy * 0.015);
-    ctx.strokeStyle = ink(0.07 + energy * 0.06);
-    ctx.beginPath();
-    ctx.arc(cx, cy, R1, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.strokeStyle = ink(0.04);
-    ctx.beginPath();
-    ctx.arc(cx, cy, base * 0.46, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // rotating ticks around the inner ring
-    const N = 60;
-    ctx.strokeStyle = ink(0.1 + energy * 0.08);
-    for (let i = 0; i < N; i++) {
-      const ang = time * 0.06 + (i / N) * Math.PI * 2;
-      const long = i % 5 === 0;
-      const r1 = R1 + (long ? 10 : 5) * dpr;
-      ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(ang) * R1, cy + Math.sin(ang) * R1);
-      ctx.lineTo(cx + Math.cos(ang) * r1, cy + Math.sin(ang) * r1);
-      ctx.stroke();
+    // move nodes (bounce off edges)
+    for (const n of nodes) {
+      n.x += n.vx * speed;
+      n.y += n.vy * speed;
+      if (n.x < 0 || n.x > w) n.vx *= -1;
+      if (n.y < 0 || n.y > h) n.vy *= -1;
+      n.x = Math.max(0, Math.min(w, n.x));
+      n.y = Math.max(0, Math.min(h, n.y));
     }
 
-    // slow radar sweep
-    const sweep = time * 0.25;
-    ctx.strokeStyle = ink(0.05 + energy * 0.06);
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + Math.cos(sweep) * R1, cy + Math.sin(sweep) * R1);
-    ctx.stroke();
+    // edges between nearby nodes
+    ctx.lineWidth = 1 * dpr;
+    for (let i = 0; i < nodes.length; i++) {
+      const a = nodes[i];
+      for (let j = i + 1; j < nodes.length; j++) {
+        const b = nodes[j];
+        const dx = a.x - b.x,
+          dy = a.y - b.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > dist * dist) continue;
+        const t = 1 - Math.sqrt(d2) / dist;
+        const alpha = t * (0.12 + energy * 0.22);
+        ctx.strokeStyle = a.accent || b.accent ? acc(alpha) : ink(alpha);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+    }
 
-    // expanding pulse rings
+    // nodes
+    for (const n of nodes) {
+      const rr = n.r * (n.hub ? 1.8 : 1) * (1 + energy * 0.6);
+      ctx.fillStyle = n.accent
+        ? acc(0.5 + energy * 0.4)
+        : ink((n.hub ? 0.5 : 0.28) + energy * 0.3);
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, rr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // expanding shock rings from center on each pulse
     for (let i = rings.length - 1; i >= 0; i--) {
       const rg = rings[i];
-      rg.r += base * 0.01;
+      rg.r += base * 0.014;
       rg.a *= 0.94;
       if (rg.a < 0.02) {
         rings.splice(i, 1);
         continue;
       }
-      ctx.strokeStyle = ink(rg.a * 0.5);
+      ctx.strokeStyle = ink(rg.a * 0.4);
+      ctx.lineWidth = 1 * dpr;
       ctx.beginPath();
       ctx.arc(cx, cy, rg.r, 0, Math.PI * 2);
       ctx.stroke();
-    }
-
-    // drifting dots
-    for (const d of dots) {
-      d.x += d.vx * (1 + energy * 0.5);
-      d.y += d.vy * (1 + energy * 0.6);
-      if (d.y < -6) {
-        d.y = h + 6;
-        d.x = rand(0, w);
-      }
-      if (d.x < -6) d.x = w + 6;
-      if (d.x > w + 6) d.x = -6;
-      ctx.fillStyle = ink(d.a + energy * 0.1);
-      ctx.beginPath();
-      ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
-      ctx.fill();
     }
 
     requestAnimationFrame(frame);
@@ -727,11 +722,11 @@ const viz = (() => {
 
   function init() {
     resize();
-    initDots();
+    initNodes();
     requestAnimationFrame(frame);
     addEventListener("resize", () => {
       resize();
-      initDots();
+      initNodes();
     });
   }
 
