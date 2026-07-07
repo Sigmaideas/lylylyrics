@@ -270,6 +270,7 @@ async function start() {
   els.nowPlaying.textContent = [artist, track].filter(Boolean).join(" — ");
   els.trackInfo.textContent = [artist, track].filter(Boolean).join(" — ");
   setInstrumental(true); // abstract visuals until (or unless) lyrics arrive
+  noteCaption = ""; // still searching — just ♪, no "not found" yet
   paintInitial();
   bumpControls();
   els.go.disabled = false;
@@ -300,6 +301,8 @@ function applyLyrics(data, duration) {
   }
 
   setInstrumental(state.lines.length === 0);
+  // if we searched and truly found nothing, say so instead of a bare ♪
+  noteCaption = state.lines.length === 0 ? "이 곡의 가사를 찾지 못했어요" : "";
   paintInitial(); // initial paint
 }
 
@@ -389,32 +392,36 @@ function lineText(i) {
   return i >= 0 && i < state.lines.length ? state.lines[i].text : "";
 }
 
+// lighter / elegant pool (heavy ultra-bold faces removed)
 const FONTS = [
-  "f-han", "f-jua", "f-dohyeon", "f-gugi", "f-song",
-  "f-pen", "f-gamja", "f-gaegu", "f-stylish", "f-dokdo",
+  "f-jua", "f-song", "f-pen", "f-gamja", "f-gaegu", "f-stylish", "f-dokdo",
 ];
+// continuous-motion styles
+const MOTION_HERO = ["m-zin", "m-zout", "m-sway"];
+const MOTION_SEC = ["m-sway", "m-orbit", "m-pulse", "m-zin"];
 // deterministic per-line pick, decorrelated per attribute
 const pk = (i, mul, add, len) => (((i * mul + add) % len) + len) % len;
 
 // composition templates: placement of [hero, next, prev] fragments.
 // x/y are viewport %, rot in degrees (occasionally ~180 for flipped text).
 const LAYOUTS = [
-  { hero: { x: 34, y: 45, rot: -5, align: "left" },   next: { x: 71, y: 21, rot: 6, align: "left" },    prev: { x: 63, y: 79, rot: -177, align: "left" } },
-  { hero: { x: 57, y: 52, rot: 4, align: "left" },    next: { x: 25, y: 25, rot: -8, align: "left" },   prev: { x: 74, y: 83, rot: 3, align: "right" } },
-  { hero: { x: 49, y: 41, rot: 0, align: "center" },  next: { x: 29, y: 74, rot: 5, align: "left" },    prev: { x: 77, y: 22, rot: 183, align: "left" } },
-  { hero: { x: 39, y: 58, rot: 6, align: "left" },    next: { x: 71, y: 37, rot: -4, align: "left" },   prev: { x: 31, y: 17, rot: -6, align: "left" } },
-  { hero: { x: 61, y: 47, rot: -7, align: "left" },   next: { x: 30, y: 66, rot: 4, align: "left" },    prev: { x: 35, y: 22, rot: 178, align: "left" } },
-  { hero: { x: 46, y: 50, rot: -3, align: "center" }, next: { x: 74, y: 73, rot: 8, align: "left" },    prev: { x: 21, y: 30, rot: -4, align: "left" } },
+  { hero: { x: 48, y: 44, rot: -4, align: "center" }, next: { x: 73, y: 20, rot: 6, align: "left" },    prev: { x: 64, y: 80, rot: -177, align: "left" } },
+  { hero: { x: 50, y: 53, rot: 3, align: "center" },  next: { x: 24, y: 24, rot: -8, align: "left" },   prev: { x: 74, y: 82, rot: 3, align: "right" } },
+  { hero: { x: 47, y: 41, rot: 0, align: "center" },  next: { x: 28, y: 75, rot: 5, align: "left" },    prev: { x: 76, y: 22, rot: 183, align: "left" } },
+  { hero: { x: 46, y: 57, rot: 4, align: "center" },  next: { x: 72, y: 36, rot: -4, align: "left" },   prev: { x: 30, y: 18, rot: -6, align: "left" } },
+  { hero: { x: 52, y: 47, rot: -5, align: "center" }, next: { x: 28, y: 66, rot: 4, align: "left" },    prev: { x: 34, y: 22, rot: 178, align: "left" } },
+  { hero: { x: 48, y: 50, rot: -3, align: "center" }, next: { x: 75, y: 73, rot: 8, align: "left" },    prev: { x: 20, y: 30, rot: -4, align: "left" } },
 ];
 // hero colour cycle: mostly white, occasional accent, occasional outline
 const HERO_COLOR = ["c-hero", "c-hero", "c-accent", "c-outline", "c-hero"];
 
 let activeFrags = [];
 let shownIdx = -2;
+let noteCaption = ""; // shown under ♪ when a search finished with no lyrics
 
-function makeFrag(text, spec, { role, color, font, size }) {
+function makeFrag(text, spec, { role, color, font, size, motion }) {
   const el = document.createElement("div");
-  el.className = ["frag", role === "hero" ? "hero" : "", size, color, font]
+  el.className = ["frag", role === "hero" ? "hero" : "", size, color, font, motion]
     .filter(Boolean)
     .join(" ");
   el.style.setProperty("--x", spec.x + "%");
@@ -422,8 +429,12 @@ function makeFrag(text, spec, { role, color, font, size }) {
   el.style.setProperty("--rot", spec.rot + "deg");
   el.style.setProperty("--align", spec.align);
 
+  // .frag > .inner (entrance/exit) > .motion (continuous zoom/rotate/drift)
   const inner = document.createElement("span");
   inner.className = "inner";
+  const mo = document.createElement("span");
+  mo.className = "motion";
+
   if (role === "hero") {
     // character-by-character reveal
     const chars = [...text];
@@ -431,19 +442,20 @@ function makeFrag(text, spec, { role, color, font, size }) {
     let ci = 0;
     for (const ch of chars) {
       if (ch === " ") {
-        inner.appendChild(document.createTextNode(" "));
+        mo.appendChild(document.createTextNode(" "));
         continue;
       }
       const s = document.createElement("span");
       s.className = "c";
       s.textContent = ch;
       s.style.animationDelay = Math.round(ci * stagger) + "ms";
-      inner.appendChild(s);
+      mo.appendChild(s);
       ci++;
     }
   } else {
-    inner.textContent = text;
+    mo.textContent = text;
   }
+  inner.appendChild(mo);
   el.appendChild(inner);
   return el;
 }
@@ -461,7 +473,7 @@ function buildNote() {
   const el = document.createElement("div");
   el.className = "frag note s-xl c-dim";
   el.style.setProperty("--x", "50%");
-  el.style.setProperty("--y", "48%");
+  el.style.setProperty("--y", noteCaption ? "44%" : "48%");
   el.style.setProperty("--rot", "0deg");
   el.style.setProperty("--align", "center");
   const inner = document.createElement("span");
@@ -470,6 +482,24 @@ function buildNote() {
   el.appendChild(inner);
   els.lyrics.appendChild(el);
   activeFrags.push(el);
+
+  if (noteCaption) {
+    const cap = document.createElement("div");
+    cap.className = "frag s-s c-dim";
+    cap.style.setProperty("--x", "50%");
+    cap.style.setProperty("--y", "60%");
+    cap.style.setProperty("--rot", "0deg");
+    cap.style.setProperty("--align", "center");
+    const ci = document.createElement("span");
+    ci.className = "inner";
+    const cm = document.createElement("span");
+    cm.className = "motion";
+    cm.textContent = noteCaption;
+    ci.appendChild(cm);
+    cap.appendChild(ci);
+    els.lyrics.appendChild(cap);
+    activeFrags.push(cap);
+  }
 }
 
 function showComposition(i) {
@@ -493,6 +523,7 @@ function showComposition(i) {
       color: HERO_COLOR[pk(i, 1, 0, HERO_COLOR.length)],
       font: FONTS[pk(i, 7, 0, FONTS.length)],
       size: heroSize,
+      motion: MOTION_HERO[pk(i, 2, 0, MOTION_HERO.length)],
     })
   );
   // next line (secondary)
@@ -504,6 +535,7 @@ function showComposition(i) {
         color: "c-dim",
         font: FONTS[pk(i, 3, 4, FONTS.length)],
         size: "s-m",
+        motion: MOTION_SEC[pk(i, 3, 1, MOTION_SEC.length)],
       })
     );
   }
@@ -516,6 +548,7 @@ function showComposition(i) {
         color: "c-dim",
         font: FONTS[pk(i, 5, 2, FONTS.length)],
         size: "s-s",
+        motion: MOTION_SEC[pk(i, 5, 3, MOTION_SEC.length)],
       })
     );
   }

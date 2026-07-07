@@ -202,26 +202,31 @@ body {
   max-width: 82vw;
   text-align: var(--align, center);
   line-height: 1;
-  font-weight: 900;
-  letter-spacing: -0.015em;
+  font-weight: 400; /* lighter, elegant — no chunky ultra-bold */
+  letter-spacing: -0.01em;
   word-break: keep-all;
 }
 .frag .inner {
   display: inline-block;
   will-change: opacity, translate, scale, filter;
 }
+/* continuous-motion layer (zoom / rotate / drift while a fragment is live) */
+.frag .motion {
+  display: inline-block;
+  will-change: transform;
+}
 
 /* colour roles (monochrome + one accent) */
 .frag.c-hero { color: var(--ink); }
 .frag.c-dim {
   color: var(--dim);
-  font-weight: 700;
+  font-weight: 500;
 }
 .frag.c-accent { color: var(--accent); }
 .frag.c-outline {
   color: transparent;
-  -webkit-text-stroke: 1.5px var(--dim);
-  text-stroke: 1.5px var(--dim);
+  -webkit-text-stroke: 1.2px var(--dim);
+  text-stroke: 1.2px var(--dim);
 }
 
 /* size tiers */
@@ -230,32 +235,41 @@ body {
 .frag.s-m  { font-size: clamp(22px, 3.4vw, 52px); }
 .frag.s-s  {
   font-size: clamp(15px, 2vw, 30px);
-  font-weight: 600;
   letter-spacing: 0.02em;
 }
 
-/* ---------- font pool (assigned per fragment in JS) ---------- */
-.f-han     { font-family: "Black Han Sans", sans-serif; }
+/* ---------- font pool (assigned per fragment in JS) — lighter / elegant ---------- */
 .f-jua     { font-family: "Jua", sans-serif; }
-.f-dohyeon { font-family: "Do Hyeon", sans-serif; }
-.f-gugi    { font-family: "Gugi", sans-serif; }
-.f-song    { font-family: "Song Myung", serif; font-weight: 400; letter-spacing: 0.01em; }
-.f-pen     { font-family: "Nanum Pen Script", cursive; }
-.f-gamja   { font-family: "Gamja Flower", cursive; }
+.f-song    { font-family: "Song Myung", serif; letter-spacing: 0.01em; }
+.f-pen     { font-family: "Nanum Pen Script", cursive; font-size: 1.15em; }
+.f-gamja   { font-family: "Gamja Flower", cursive; font-size: 1.1em; }
 .f-gaegu   { font-family: "Gaegu", cursive; }
-.f-stylish { font-family: "Stylish", sans-serif; font-weight: 400; }
-.f-dokdo   { font-family: "Dokdo", cursive; }
+.f-stylish { font-family: "Stylish", sans-serif; }
+.f-dokdo   { font-family: "Dokdo", cursive; font-size: 1.12em; }
+
+/* ---------- continuous motion (class on .frag, animates .motion) ---------- */
+.m-zin   .motion { animation: mZin   7s ease-in-out infinite alternate; }
+.m-zout  .motion { animation: mZout  8s ease-in-out infinite alternate; }
+.m-sway  .motion { animation: mSway  6s ease-in-out infinite alternate; }
+.m-orbit .motion { animation: mOrbit 9s ease-in-out infinite alternate; }
+.m-pulse .motion { animation: mPulse 3.4s ease-in-out infinite; }
+
+@keyframes mZin   { from { transform: scale(1);   } to { transform: scale(1.1); } }
+@keyframes mZout  { from { transform: scale(1.1); } to { transform: scale(1);   } }
+@keyframes mSway  { from { transform: rotate(-4deg) scale(1.02); } to { transform: rotate(4deg) scale(1.07); } }
+@keyframes mOrbit { from { transform: translate(-0.07em, -0.05em) rotate(-2.5deg); } to { transform: translate(0.07em, 0.05em) rotate(2.5deg); } }
+@keyframes mPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
 
 /* ---------- entrance / exit ---------- */
-/* secondary fragments fade/drift in as a block */
+/* secondary fragments zoom/rotate/drift in as a block */
 .frag:not(.hero) .inner {
-  animation: fragIn 0.7s both cubic-bezier(0.2, 0.9, 0.3, 1);
+  animation: fragIn 0.75s both cubic-bezier(0.2, 0.9, 0.3, 1);
 }
 /* hero reveals character-by-character (stagger set inline) */
 .frag.hero .c {
   display: inline-block;
   opacity: 0;
-  animation: cUp 0.55s both cubic-bezier(0.2, 1, 0.3, 1);
+  animation: cUp 0.6s both cubic-bezier(0.2, 1.1, 0.3, 1);
 }
 
 /* every fragment exits together when the line changes */
@@ -267,14 +281,14 @@ body {
 }
 
 @keyframes fragIn {
-  from { opacity: 0; translate: 0 0.5em; scale: 0.94; filter: blur(6px); }
-  to   { opacity: 1; translate: 0 0;    scale: 1;    filter: blur(0); }
+  from { opacity: 0; translate: 0 0.55em; scale: 0.78; rotate: -8deg; filter: blur(8px); }
+  to   { opacity: 1; translate: 0 0;      scale: 1;    rotate: 0deg;  filter: blur(0); }
 }
 @keyframes fragOut {
-  to { opacity: 0; translate: 0 -0.35em; scale: 1.06; filter: blur(10px); }
+  to { opacity: 0; translate: 0 -0.4em; scale: 1.2; rotate: 7deg; filter: blur(12px); }
 }
 @keyframes cUp {
-  from { opacity: 0; transform: translateY(0.75em) rotate(5deg); }
+  from { opacity: 0; transform: translateY(0.8em) rotate(9deg) scale(0.65); }
   to   { opacity: 1; transform: none; }
 }
 
