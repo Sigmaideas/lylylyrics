@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@300;500;700;900&family=Poppins:ital,wght@0,600;0,800;1,700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Jua&family=Do+Hyeon&family=Gugi&family=Song+Myung&family=Nanum+Pen+Script&family=Gamja+Flower&family=Gaegu:wght@700&family=Stylish&family=Dokdo&family=Noto+Sans+KR:wght@300;500;700;900&family=Poppins:ital,wght@0,600;0,800;1,700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="style.css" />
@@ -56,12 +56,9 @@
 
     <!-- lyric stage -->
     <main id="stage" class="stage hidden">
-      <div id="lyrics" class="lyrics">
-        <div class="line prev" data-slot="prev"></div>
-        <div class="line current" data-slot="current"></div>
-        <div class="line next" data-slot="next"></div>
-        <div class="line next2" data-slot="next2"></div>
-      </div>
+      <!-- active lyric lines are created/removed here dynamically -->
+      <div id="lyrics" class="lyrics"></div>
+      <div id="nextPreview" class="next-preview"></div>
       <div id="nowPlaying" class="now-playing"></div>
     </main>
 

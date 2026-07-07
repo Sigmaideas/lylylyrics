@@ -17,10 +17,7 @@ const els = {
   go: $("go"),
   status: $("status"),
   lyrics: $("lyrics"),
-  slotPrev: document.querySelector('[data-slot="prev"]'),
-  slotCurrent: document.querySelector('[data-slot="current"]'),
-  slotNext: document.querySelector('[data-slot="next"]'),
-  slotNext2: document.querySelector('[data-slot="next2"]'),
+  nextPreview: $("nextPreview"),
   nowPlaying: $("nowPlaying"),
   controls: $("controls"),
   playPause: $("playPause"),
@@ -274,7 +271,7 @@ async function start() {
   els.nowPlaying.textContent = [artist, track].filter(Boolean).join(" — ");
   els.trackInfo.textContent = [artist, track].filter(Boolean).join(" — ");
   setInstrumental(true); // abstract visuals until (or unless) lyrics arrive
-  renderSlots();
+  paintInitial();
   bumpControls();
   els.go.disabled = false;
   setStatus("");
@@ -304,7 +301,7 @@ function applyLyrics(data, duration) {
   }
 
   setInstrumental(state.lines.length === 0);
-  renderSlots(); // initial paint
+  paintInitial(); // initial paint
 }
 
 function createPlayer(videoId) {
@@ -376,51 +373,112 @@ function tickLyrics() {
   const idx = findIndex(t);
   if (idx !== state.index) {
     state.index = idx;
-    renderSlots();
+    showLine(idx);
     viz.pulse(); // surge the visualization on each new line
   }
 }
 
 /* ------------------------------------------------------------------ *
- * Lyric rendering
+ * Lyric rendering — ONE active line at a time. A line highlights (enters)
+ * when its part starts and animates out when the next part begins. Each
+ * line gets a font, gradient and entrance/exit style picked deterministically
+ * so consecutive lines always differ.
  * ------------------------------------------------------------------ */
 function lineText(i) {
   return i >= 0 && i < state.lines.length ? state.lines[i].text : "";
 }
 
-function wordize(el, text) {
-  el.innerHTML = "";
-  if (!text) return;
-  const words = text.split(/(\s+)/);
-  let wi = 0;
-  for (const part of words) {
-    if (/^\s+$/.test(part)) {
-      el.appendChild(document.createTextNode(part));
+const FONTS = [
+  "f-han", "f-jua", "f-dohyeon", "f-gugi", "f-song",
+  "f-pen", "f-gamja", "f-gaegu", "f-stylish", "f-dokdo",
+];
+const ENTER = ["en-up", "en-zoom", "en-blur", "en-drop", "en-spin", "en-wave"];
+const EXIT = ["ex-up", "ex-zoom", "ex-fade", "ex-down"];
+const GRADS = ["g1", "g2", "g3", "g4", "g5"];
+// deterministic per-line pick, decorrelated per attribute
+const pk = (i, mul, add, len) => (((i * mul + add) % len) + len) % len;
+
+let activeEl = null;
+let shownIdx = -2;
+
+function splitChars(el, text) {
+  el.textContent = "";
+  const chars = [...text];
+  const stagger = Math.min(65, 700 / Math.max(1, chars.length));
+  let ci = 0;
+  for (const ch of chars) {
+    if (ch === " ") {
+      el.appendChild(document.createTextNode(" "));
       continue;
     }
-    const span = document.createElement("span");
-    span.className = "w";
-    span.textContent = part;
-    span.style.animationDelay = `${wi * 60}ms`;
-    el.appendChild(span);
-    wi++;
+    const s = document.createElement("span");
+    s.className = "c";
+    s.textContent = ch;
+    // two animations on each char: hue (delay 0) + staggered entrance
+    s.style.animationDelay = `0s, ${Math.round(ci * stagger)}ms`;
+    el.appendChild(s);
+    ci++;
   }
 }
 
-function renderSlots() {
-  const i = state.index;
-  els.slotPrev.textContent = lineText(i - 1);
-  els.slotNext.textContent = lineText(i + 1);
-  els.slotNext2.textContent = lineText(i + 2);
-  // current gets the per-word reveal
-  const cur = lineText(i);
-  if (cur) {
-    wordize(els.slotCurrent, cur);
-  } else {
-    els.slotCurrent.innerHTML = state.instrumental
-      ? `<span class="w">♪</span>`
-      : "";
+function retireLine(el, idx) {
+  if (!el) return;
+  el.classList.remove(...ENTER);
+  el.classList.add("exit", EXIT[pk(idx, 11, 0, EXIT.length)]);
+  el.addEventListener("animationend", () => el.remove(), { once: true });
+  setTimeout(() => el.remove(), 900); // safety net if animationend is missed
+}
+
+function showLine(i) {
+  if (i === shownIdx) return;
+  shownIdx = i;
+
+  retireLine(activeEl, i);
+  activeEl = null;
+  updateNext(i);
+
+  const text = lineText(i);
+  if (!text) {
+    showNote(); // intro / instrumental placeholder
+    return;
   }
+
+  const el = document.createElement("div");
+  el.className =
+    `lyric-line ${FONTS[pk(i, 7, 0, FONTS.length)]} ` +
+    `${GRADS[pk(i, 5, 2, GRADS.length)]} ${ENTER[pk(i, 3, 1, ENTER.length)]}`;
+  splitChars(el, text);
+  els.lyrics.appendChild(el);
+  activeEl = el;
+}
+
+function showNote() {
+  const el = document.createElement("div");
+  el.className = "lyric-line note g3";
+  el.textContent = "♪";
+  els.lyrics.appendChild(el);
+  activeEl = el;
+}
+
+function updateNext(i) {
+  const nxt = lineText(i + 1);
+  els.nextPreview.textContent = nxt;
+  els.nextPreview.classList.toggle("show", !!nxt);
+}
+
+function clearLines() {
+  els.lyrics.innerHTML = "";
+  activeEl = null;
+  shownIdx = -2;
+  els.nextPreview.classList.remove("show");
+}
+
+// initial paint: instrumental -> ♪; otherwise intro note + upcoming preview
+function paintInitial() {
+  clearLines();
+  state.index = -1;
+  if (state.instrumental) showNote();
+  else showLine(-1);
 }
 
 /* ------------------------------------------------------------------ *
@@ -623,6 +681,7 @@ function resetApp() {
   document.body.classList.remove("instrumental");
   state.lines = [];
   state.index = -1;
+  clearLines();
   setStatus("");
 }
 
