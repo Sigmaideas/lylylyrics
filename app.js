@@ -435,8 +435,11 @@ const LAYOUTS = [
   { hero: { x: 52, y: 47, rot: -5, align: "center" }, next: { x: 28, y: 66, rot: 4, align: "left" },    prev: { x: 34, y: 22, rot: 178, align: "left" } },
   { hero: { x: 48, y: 50, rot: -3, align: "center" }, next: { x: 75, y: 73, rot: 8, align: "left" },    prev: { x: 20, y: 30, rot: -4, align: "left" } },
 ];
-// hero colour cycle: mostly white, occasional accent, occasional outline
-const HERO_COLOR = ["c-hero", "c-hero", "c-accent", "c-outline", "c-hero"];
+// hero colour cycle: mostly white, occasional fluorescent neon + outline
+const HERO_COLOR = [
+  "c-hero", "c-hero", "c-a1", "c-hero", "c-a2",
+  "c-hero", "c-outline", "c-a3", "c-hero",
+];
 
 let activeFrags = [];
 let shownIdx = -2;
@@ -610,7 +613,13 @@ const viz = (() => {
   let linkDist = 160;
 
   const ink = (a) => `rgba(244,242,238,${a})`;
-  const acc = (a) => `rgba(255,59,48,${a})`;
+  // same fluorescent trio used on the lyrics (cyan / lime / magenta)
+  const NEON = [
+    [34, 231, 255],
+    [198, 255, 61],
+    [255, 67, 217],
+  ];
+  const neon = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
 
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -636,7 +645,8 @@ const viz = (() => {
         vy: rand(-0.22, 0.22) * dpr,
         r: rand(1.1, 2.4) * dpr,
         hub: Math.random() < 0.12, // brighter "hub" nodes
-        accent: Math.random() < 0.06, // rare accent node
+        accent: Math.random() < 0.08, // rare neon node
+        ac: NEON[(Math.random() * NEON.length) | 0],
       });
     }
   }
@@ -682,7 +692,8 @@ const viz = (() => {
         if (d2 > dist * dist) continue;
         const t = 1 - Math.sqrt(d2) / dist;
         const alpha = t * (0.12 + energy * 0.22);
-        ctx.strokeStyle = a.accent || b.accent ? acc(alpha) : ink(alpha);
+        const an = a.accent ? a : b.accent ? b : null;
+        ctx.strokeStyle = an ? neon(an.ac, alpha * 1.3) : ink(alpha);
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
@@ -694,7 +705,7 @@ const viz = (() => {
     for (const n of nodes) {
       const rr = n.r * (n.hub ? 1.8 : 1) * (1 + energy * 0.6);
       ctx.fillStyle = n.accent
-        ? acc(0.5 + energy * 0.4)
+        ? neon(n.ac, 0.6 + energy * 0.4)
         : ink((n.hub ? 0.5 : 0.28) + energy * 0.3);
       ctx.beginPath();
       ctx.arc(n.x, n.y, rr, 0, Math.PI * 2);

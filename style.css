@@ -223,15 +223,18 @@ body {
 .w-mid  { font-weight: 500; }
 .w-bold { font-weight: 800; }
 
-/* colour roles (monochrome + one accent) */
+/* colour roles — monochrome base + occasional fluorescent neon highlight */
 .frag.c-hero { color: var(--ink); }
 .frag.c-dim { color: var(--dim); }
-.frag.c-accent { color: var(--accent); }
 .frag.c-outline {
   color: transparent;
   -webkit-text-stroke: 1.4px var(--dim);
   text-stroke: 1.4px var(--dim);
 }
+/* three neon highlights with a fluorescent glow */
+.frag.c-a1 { color: #22e7ff; text-shadow: 0 0 26px rgba(34, 231, 255, 0.5), 0 0 7px rgba(34, 231, 255, 0.4); }
+.frag.c-a2 { color: #c6ff3d; text-shadow: 0 0 26px rgba(198, 255, 61, 0.5), 0 0 7px rgba(198, 255, 61, 0.4); }
+.frag.c-a3 { color: #ff43d9; text-shadow: 0 0 26px rgba(255, 67, 217, 0.5), 0 0 7px rgba(255, 67, 217, 0.4); }
 
 /* size tiers */
 .frag.s-xl { font-size: clamp(48px, 10vw, 180px); }
