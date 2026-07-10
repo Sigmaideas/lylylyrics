@@ -23,6 +23,7 @@ const els = {
   fullscreen: $("fullscreen"),
   reset: $("reset"),
   trackInfo: $("track-info"),
+  mic: $("mic"),
 };
 
 /* ------------------------------------------------------------------ *
@@ -596,6 +597,64 @@ function paintInitial() {
 }
 
 /* ------------------------------------------------------------------ *
+ * Audio input (optional) — YouTube's audio can't be tapped (cross-origin
+ * iframe), so real "loudness" reactivity comes from the microphone listening
+ * to the speakers. Off by default; the viz falls back to a synthetic beat.
+ * ------------------------------------------------------------------ */
+const audio = (() => {
+  let ac, analyser, data, stream, running = false, level = 0;
+
+  async function enable() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      });
+      ac = new (window.AudioContext || window.webkitAudioContext)();
+      if (ac.state === "suspended") await ac.resume();
+      const src = ac.createMediaStreamSource(stream);
+      analyser = ac.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.82;
+      data = new Uint8Array(analyser.frequencyBinCount);
+      src.connect(analyser);
+      running = true;
+      return true;
+    } catch {
+      disable();
+      return false;
+    }
+  }
+
+  function disable() {
+    running = false;
+    level = 0;
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+    if (ac) ac.close();
+    stream = ac = analyser = null;
+  }
+
+  // RMS loudness 0..1 (smoothed), boosted so quiet speakers still register
+  function sample() {
+    if (!running || !analyser) return 0;
+    analyser.getByteFrequencyData(data);
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+    const rms = Math.sqrt(sum / data.length) / 255;
+    level = Math.min(1, rms * 2.6);
+    return level;
+  }
+
+  return {
+    enable,
+    disable,
+    sample,
+    get on() {
+      return running;
+    },
+  };
+})();
+
+/* ------------------------------------------------------------------ *
  * Visualization — cyber node-graph network: drifting nodes connected by
  * lines when close (a constellation / neural-net structure). A lyric change
  * sends an energy shock that brightens edges, enlarges nodes and radiates
@@ -609,8 +668,10 @@ const viz = (() => {
     dpr = 1;
   let energy = 0; // decays; bumped on each lyric line
   const nodes = [];
-  const rings = []; // expanding pulse rings
+  const waves = []; // expanding sound ripples (water-like)
   let linkDist = 160;
+  let t0 = 0,
+    nextWaveT = 0;
 
   const ink = (a) => `rgba(244,242,238,${a})`;
   // same fluorescent trio used on the lyrics (cyan / lime / magenta)
@@ -653,12 +714,28 @@ const viz = (() => {
 
   function pulse() {
     energy = Math.min(1.6, energy + 1);
-    rings.push({ r: Math.min(w, h) * 0.04, a: 0.55 });
-    if (rings.length > 6) rings.shift();
+    // a bright neon ripple radiates on each new lyric line
+    waves.push({ r: Math.min(w, h) * 0.03, a: 0.65, c: NEON[(Math.random() * NEON.length) | 0] });
   }
 
-  function frame() {
+  // synthetic loudness when the mic is off — a breathing pseudo-beat
+  function synthAmp(time) {
+    const s =
+      0.3 +
+      0.17 * Math.sin(time * 2.3) +
+      0.12 * Math.sin(time * 3.9 + 1.3) +
+      0.06 * Math.sin(time * 7.1);
+    return Math.max(0, Math.min(1, s));
+  }
+
+  function frame(ts) {
+    if (!t0) t0 = ts;
+    const time = (ts - t0) / 1000;
     energy *= 0.94;
+
+    // amplitude: real mic loudness, or a synthetic beat when off
+    const amp = audio.on ? audio.sample() : synthAmp(time);
+    const drive = Math.min(1.5, amp + energy * 0.9);
 
     ctx.globalCompositeOperation = "source-over";
     ctx.fillStyle = "#060606";
@@ -667,8 +744,35 @@ const viz = (() => {
     const cx = w / 2,
       cy = h / 2,
       base = Math.min(w, h);
-    const speed = 1 + energy * 1.6;
-    const dist = linkDist * (1 + energy * 0.15);
+    const speed = 1 + drive * 1.5;
+    const dist = linkDist * (1 + drive * 0.18);
+
+    // emit ripples from the centre — faster & brighter the louder it is
+    if (time >= nextWaveT) {
+      waves.push({
+        r: base * 0.02,
+        a: 0.3 + amp * 0.5,
+        c: amp > 0.6 ? NEON[(Math.random() * NEON.length) | 0] : null,
+      });
+      nextWaveT = time + Math.max(0.22, 0.8 - amp * 0.5);
+    }
+
+    // draw ripples (under the graph) — concentric water-like waves
+    for (let i = waves.length - 1; i >= 0; i--) {
+      const wv = waves[i];
+      wv.r += base * (0.006 + amp * 0.015);
+      wv.a *= 0.972;
+      if (wv.a < 0.015 || wv.r > base * 1.15) {
+        waves.splice(i, 1);
+        continue;
+      }
+      ctx.lineWidth = (wv.c ? 1.8 : 1.2) * dpr;
+      ctx.strokeStyle = wv.c ? neon(wv.c, wv.a * 0.8) : ink(wv.a * 0.72);
+      ctx.beginPath();
+      ctx.arc(cx, cy, wv.r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    if (waves.length > 48) waves.splice(0, waves.length - 48);
 
     // move nodes (bounce off edges)
     for (const n of nodes) {
@@ -691,7 +795,7 @@ const viz = (() => {
         const d2 = dx * dx + dy * dy;
         if (d2 > dist * dist) continue;
         const t = 1 - Math.sqrt(d2) / dist;
-        const alpha = t * (0.12 + energy * 0.22);
+        const alpha = t * (0.12 + drive * 0.25);
         const an = a.accent ? a : b.accent ? b : null;
         ctx.strokeStyle = an ? neon(an.ac, alpha * 1.3) : ink(alpha);
         ctx.beginPath();
@@ -701,31 +805,15 @@ const viz = (() => {
       }
     }
 
-    // nodes
+    // nodes (pulse with loudness)
     for (const n of nodes) {
-      const rr = n.r * (n.hub ? 1.8 : 1) * (1 + energy * 0.6);
+      const rr = n.r * (n.hub ? 1.8 : 1) * (1 + drive * 0.7);
       ctx.fillStyle = n.accent
-        ? neon(n.ac, 0.6 + energy * 0.4)
-        : ink((n.hub ? 0.5 : 0.28) + energy * 0.3);
+        ? neon(n.ac, 0.6 + drive * 0.4)
+        : ink((n.hub ? 0.5 : 0.28) + drive * 0.3);
       ctx.beginPath();
       ctx.arc(n.x, n.y, rr, 0, Math.PI * 2);
       ctx.fill();
-    }
-
-    // expanding shock rings from center on each pulse
-    for (let i = rings.length - 1; i >= 0; i--) {
-      const rg = rings[i];
-      rg.r += base * 0.014;
-      rg.a *= 0.94;
-      if (rg.a < 0.02) {
-        rings.splice(i, 1);
-        continue;
-      }
-      ctx.strokeStyle = ink(rg.a * 0.4);
-      ctx.lineWidth = 1 * dpr;
-      ctx.beginPath();
-      ctx.arc(cx, cy, rg.r, 0, Math.PI * 2);
-      ctx.stroke();
     }
 
     requestAnimationFrame(frame);
@@ -774,6 +862,23 @@ function toggleFullscreen() {
   }
 }
 
+async function toggleMic() {
+  if (audio.on) {
+    audio.disable();
+    els.mic.classList.remove("active");
+    setStatus("");
+    return;
+  }
+  setStatus("마이크 권한 요청 중…");
+  const ok = await audio.enable();
+  els.mic.classList.toggle("active", ok);
+  setStatus(
+    ok ? "🎤 사운드 반응 켜짐 (스피커 소리에 반응)" : "마이크를 사용할 수 없어요",
+    !ok
+  );
+  if (ok) setTimeout(() => setStatus(""), 2500);
+}
+
 function resetApp() {
   try {
     state.player && state.player.stopVideo();
@@ -784,6 +889,10 @@ function resetApp() {
   state.lines = [];
   state.index = -1;
   clearLines();
+  if (audio.on) {
+    audio.disable();
+    els.mic.classList.remove("active");
+  }
   setStatus("");
 }
 
@@ -795,6 +904,7 @@ els.url.addEventListener("keydown", (e) => {
   if (e.key === "Enter") start();
 });
 els.playPause.addEventListener("click", togglePlay);
+els.mic.addEventListener("click", toggleMic);
 els.fullscreen.addEventListener("click", toggleFullscreen);
 els.reset.addEventListener("click", resetApp);
 

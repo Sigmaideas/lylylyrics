@@ -366,6 +366,10 @@ body {
 .ctrl:active {
   transform: scale(0.92);
 }
+.ctrl.active {
+  background: var(--accent);
+  box-shadow: 0 0 16px rgba(255, 59, 48, 0.5);
+}
 
 .track-info {
   font-size: 13px;
