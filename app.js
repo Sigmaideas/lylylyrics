@@ -714,8 +714,14 @@ const viz = (() => {
 
   function pulse() {
     energy = Math.min(1.6, energy + 1);
-    // a bright neon ripple radiates on each new lyric line
-    waves.push({ r: Math.min(w, h) * 0.03, a: 0.65, c: NEON[(Math.random() * NEON.length) | 0] });
+    // a bright neon ripple radiates from a random point on each new lyric line
+    waves.push({
+      x: rand(0.2, 0.8) * w,
+      y: rand(0.22, 0.78) * h,
+      r: Math.min(w, h) * 0.03,
+      a: 0.7,
+      c: NEON[(Math.random() * NEON.length) | 0],
+    });
   }
 
   // synthetic loudness when the mic is off — a breathing pseudo-beat
@@ -747,32 +753,34 @@ const viz = (() => {
     const speed = 1 + drive * 1.5;
     const dist = linkDist * (1 + drive * 0.18);
 
-    // emit ripples from the centre — faster & brighter the louder it is
+    // emit ripples from a random point — occasional, a bit more often when loud
     if (time >= nextWaveT) {
       waves.push({
+        x: rand(0.15, 0.85) * w,
+        y: rand(0.18, 0.82) * h,
         r: base * 0.02,
-        a: 0.3 + amp * 0.5,
+        a: 0.34 + amp * 0.5,
         c: amp > 0.6 ? NEON[(Math.random() * NEON.length) | 0] : null,
       });
-      nextWaveT = time + Math.max(0.22, 0.8 - amp * 0.5);
+      nextWaveT = time + Math.max(0.9, 2.4 - amp * 1.3);
     }
 
-    // draw ripples (under the graph) — concentric water-like waves
+    // draw ripples (under the graph) — thick, slow, water-like waves
     for (let i = waves.length - 1; i >= 0; i--) {
       const wv = waves[i];
-      wv.r += base * (0.006 + amp * 0.015);
-      wv.a *= 0.972;
-      if (wv.a < 0.015 || wv.r > base * 1.15) {
+      wv.r += base * (0.0028 + amp * 0.006); // slower expansion
+      wv.a *= 0.986; // fade slower so thick rings linger
+      if (wv.a < 0.015 || wv.r > base * 1.3) {
         waves.splice(i, 1);
         continue;
       }
-      ctx.lineWidth = (wv.c ? 1.8 : 1.2) * dpr;
-      ctx.strokeStyle = wv.c ? neon(wv.c, wv.a * 0.8) : ink(wv.a * 0.72);
+      ctx.lineWidth = (wv.c ? 3.4 : 2.6) * dpr; // thicker
+      ctx.strokeStyle = wv.c ? neon(wv.c, wv.a * 0.85) : ink(wv.a * 0.72);
       ctx.beginPath();
-      ctx.arc(cx, cy, wv.r, 0, Math.PI * 2);
+      ctx.arc(wv.x, wv.y, wv.r, 0, Math.PI * 2);
       ctx.stroke();
     }
-    if (waves.length > 48) waves.splice(0, waves.length - 48);
+    if (waves.length > 40) waves.splice(0, waves.length - 40);
 
     // move nodes (bounce off edges)
     for (const n of nodes) {
