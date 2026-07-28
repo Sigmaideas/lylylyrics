@@ -4,5 +4,7 @@
   "name": "lylylyrics-proxy",
   "main": "src/index.js",
   "compatibility_date": "2025-01-15",
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+  // Workers AI: LLM (prompt) + text-to-image (scene background)
+  "ai": { "binding": "AI" }
 }

@@ -31,18 +31,80 @@ const json = (data, status = 200) =>
   });
 
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: CORS });
     }
     const url = new URL(request.url);
     if (url.pathname === "/netease") return handleNetease(url);
+    if (url.pathname === "/scene") return handleScene(url, env);
     if (url.pathname === "/" || url.pathname === "/health") {
       return json({ ok: true, service: "lylylyrics-proxy" });
     }
     return json({ error: "not_found" }, 404);
   },
 };
+
+/* ---------- generative scene image (Workers AI) ---------- */
+const STYLE =
+  "cinematic wide establishing shot, filmic 35mm grain, moody atmospheric " +
+  "lighting, muted retro color palette, dreamy, highly detailed, depth of " +
+  "field, no text, no watermark, no faces";
+
+async function handleScene(url, env) {
+  const title = (url.searchParams.get("title") || "").slice(0, 120);
+  const artist = (url.searchParams.get("artist") || "").slice(0, 80);
+  const lyrics = (url.searchParams.get("lyrics") || "")
+    .replace(/\[\d{1,2}:\d{2}(?:[.:]\d{1,3})?\]/g, " ")
+    .replace(/\s+/g, " ")
+    .slice(0, 500);
+
+  // 1) LLM turns the song into a vivid scene prompt matching its mood/genre
+  let scene = "";
+  try {
+    const sys =
+      "You convert a song into ONE vivid text-to-image prompt describing a " +
+      "SCENE/PLACE/ATMOSPHERE that matches the song's mood and genre (e.g. " +
+      "Korean city pop -> retro 1980s neon city skyline at night, rain-slick " +
+      "streets; ballad -> quiet misty dawn; acoustic -> sunlit meadow). " +
+      "No people, no text. Output ONLY the scene description, one concise " +
+      "line, in English, max 40 words.";
+    const user = `Title: ${title}\nArtist: ${artist}\nLyrics: ${lyrics}`;
+    const out = await env.AI.run("@cf/meta/llama-3.2-3b-instruct", {
+      messages: [
+        { role: "system", content: sys },
+        { role: "user", content: user },
+      ],
+      max_tokens: 160,
+    });
+    scene = (out.response || "").trim().replace(/^["'\s]+|["'\s]+$/g, "");
+  } catch {
+    scene = "";
+  }
+  if (!scene) scene = `${title} ${artist} mood, atmospheric scenery`;
+
+  const prompt = `${scene}. ${STYLE}`;
+
+  // 2) generate the image (Flux schnell — fast)
+  try {
+    const img = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", {
+      prompt,
+      steps: 6,
+    });
+    const bytes = Uint8Array.from(atob(img.image), (c) => c.charCodeAt(0));
+    return new Response(bytes, {
+      headers: {
+        "content-type": "image/png",
+        "cache-control": "public, max-age=86400",
+        "x-scene": encodeURIComponent(scene),
+        "access-control-expose-headers": "x-scene",
+        ...CORS,
+      },
+    });
+  } catch (e) {
+    return json({ error: "image_failed", detail: String(e), scene }, 502);
+  }
+}
 
 async function neFetch(target) {
   const r = await fetch(target, {
