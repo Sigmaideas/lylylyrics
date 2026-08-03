@@ -18,8 +18,11 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+    <!-- generative image background (image mode) -->
+    <div id="bgimg" class="bgimg"></div>
     <!-- animated background -->
     <canvas id="viz"></canvas>
+    <div id="bgshade" class="bgshade"></div>
     <div class="vignette"></div>
 
     <!-- start / input screen -->
@@ -52,6 +55,16 @@
             </label>
           </div>
         </details>
+
+        <div class="modes" id="modes">
+          <span class="modes-label">배경</span>
+          <button type="button" class="mode-btn active" data-mode="graph">
+            그래프 · 물결
+          </button>
+          <button type="button" class="mode-btn" data-mode="image">
+            생성형 이미지 ✨
+          </button>
+        </div>
 
         <button id="go" class="go">시작하기</button>
         <p id="status" class="status"></p>

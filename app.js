@@ -24,6 +24,9 @@ const els = {
   reset: $("reset"),
   trackInfo: $("track-info"),
   mic: $("mic"),
+  bgimg: $("bgimg"),
+  bgshade: $("bgshade"),
+  modes: $("modes"),
 };
 
 /* ------------------------------------------------------------------ *
@@ -37,6 +40,8 @@ const state = {
   instrumental: false,
   meta: { artist: "", track: "" },
   playing: false,
+  mode: "graph", // "graph" | "image"
+  sceneRequested: false,
 };
 
 /* ------------------------------------------------------------------ *
@@ -295,6 +300,14 @@ async function start() {
   els.stage.classList.remove("hidden");
   els.nowPlaying.textContent = [artist, track].filter(Boolean).join(" — ");
   els.trackInfo.textContent = [artist, track].filter(Boolean).join(" — ");
+
+  // background mode (graph vs generative image)
+  state.sceneRequested = false;
+  document.body.classList.remove("has-bg");
+  els.bgimg.style.backgroundImage = "";
+  document.body.classList.toggle("imgmode", state.mode === "image");
+  viz.setMode(state.mode);
+
   setInstrumental(true); // abstract visuals until (or unless) lyrics arrive
   noteCaption = ""; // still searching — just ♪, no "not found" yet
   paintInitial();
@@ -330,6 +343,40 @@ function applyLyrics(data, duration) {
   // if we searched and truly found nothing, say so instead of a bare ♪
   noteCaption = state.lines.length === 0 ? "이 곡의 가사를 찾지 못했어요" : "";
   paintInitial(); // initial paint
+
+  // generate the mood background once, now that we have title/artist + lyrics
+  if (state.mode === "image") generateScene();
+}
+
+// Ask the Worker for a mood-matched scene image (once per song) and fade it in
+async function generateScene() {
+  if (state.sceneRequested) return;
+  state.sceneRequested = true;
+  const { artist, track } = state.meta;
+  if (!artist && !track) return;
+  const snippet = state.lines
+    .slice(0, 12)
+    .map((l) => l.text)
+    .join(" ")
+    .slice(0, 400);
+  const p = new URLSearchParams({
+    title: track || "",
+    artist: artist || "",
+    lyrics: snippet,
+  });
+  try {
+    const r = await fetch(`${LYRICS_PROXY}/scene?${p}`);
+    if (!r.ok) return;
+    const objUrl = URL.createObjectURL(await r.blob());
+    const im = new Image(); // preload, then reveal
+    im.onload = () => {
+      els.bgimg.style.backgroundImage = `url("${objUrl}")`;
+      document.body.classList.add("has-bg");
+    };
+    im.src = objUrl;
+  } catch {
+    /* keep the animated background if generation fails */
+  }
 }
 
 function createPlayer(videoId) {
@@ -672,6 +719,7 @@ const viz = (() => {
   let linkDist = 160;
   let t0 = 0,
     nextWaveT = 0;
+  let mode = "graph"; // "graph" draws the node network; "image" only ripples
 
   const ink = (a) => `rgba(244,242,238,${a})`;
   // same fluorescent trio used on the lyrics (cyan / lime / magenta)
@@ -744,8 +792,12 @@ const viz = (() => {
     const drive = Math.min(1.5, amp + energy * 0.9);
 
     ctx.globalCompositeOperation = "source-over";
-    ctx.fillStyle = "#060606";
-    ctx.fillRect(0, 0, w, h);
+    if (mode === "image") {
+      ctx.clearRect(0, 0, w, h); // let the photo show through; ripples only
+    } else {
+      ctx.fillStyle = "#060606";
+      ctx.fillRect(0, 0, w, h);
+    }
 
     const cx = w / 2,
       cy = h / 2,
@@ -782,46 +834,49 @@ const viz = (() => {
     }
     if (waves.length > 40) waves.splice(0, waves.length - 40);
 
-    // move nodes (bounce off edges)
-    for (const n of nodes) {
-      n.x += n.vx * speed;
-      n.y += n.vy * speed;
-      if (n.x < 0 || n.x > w) n.vx *= -1;
-      if (n.y < 0 || n.y > h) n.vy *= -1;
-      n.x = Math.max(0, Math.min(w, n.x));
-      n.y = Math.max(0, Math.min(h, n.y));
-    }
-
-    // edges between nearby nodes
-    ctx.lineWidth = 1 * dpr;
-    for (let i = 0; i < nodes.length; i++) {
-      const a = nodes[i];
-      for (let j = i + 1; j < nodes.length; j++) {
-        const b = nodes[j];
-        const dx = a.x - b.x,
-          dy = a.y - b.y;
-        const d2 = dx * dx + dy * dy;
-        if (d2 > dist * dist) continue;
-        const t = 1 - Math.sqrt(d2) / dist;
-        const alpha = t * (0.12 + drive * 0.25);
-        const an = a.accent ? a : b.accent ? b : null;
-        ctx.strokeStyle = an ? neon(an.ac, alpha * 1.3) : ink(alpha);
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
-        ctx.stroke();
+    // node graph — skipped in image mode (photo shows instead)
+    if (mode !== "image") {
+      // move nodes (bounce off edges)
+      for (const n of nodes) {
+        n.x += n.vx * speed;
+        n.y += n.vy * speed;
+        if (n.x < 0 || n.x > w) n.vx *= -1;
+        if (n.y < 0 || n.y > h) n.vy *= -1;
+        n.x = Math.max(0, Math.min(w, n.x));
+        n.y = Math.max(0, Math.min(h, n.y));
       }
-    }
 
-    // nodes (pulse with loudness)
-    for (const n of nodes) {
-      const rr = n.r * (n.hub ? 1.8 : 1) * (1 + drive * 0.7);
-      ctx.fillStyle = n.accent
-        ? neon(n.ac, 0.6 + drive * 0.4)
-        : ink((n.hub ? 0.5 : 0.28) + drive * 0.3);
-      ctx.beginPath();
-      ctx.arc(n.x, n.y, rr, 0, Math.PI * 2);
-      ctx.fill();
+      // edges between nearby nodes
+      ctx.lineWidth = 1 * dpr;
+      for (let i = 0; i < nodes.length; i++) {
+        const a = nodes[i];
+        for (let j = i + 1; j < nodes.length; j++) {
+          const b = nodes[j];
+          const dx = a.x - b.x,
+            dy = a.y - b.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 > dist * dist) continue;
+          const t = 1 - Math.sqrt(d2) / dist;
+          const alpha = t * (0.12 + drive * 0.25);
+          const an = a.accent ? a : b.accent ? b : null;
+          ctx.strokeStyle = an ? neon(an.ac, alpha * 1.3) : ink(alpha);
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        }
+      }
+
+      // nodes (pulse with loudness)
+      for (const n of nodes) {
+        const rr = n.r * (n.hub ? 1.8 : 1) * (1 + drive * 0.7);
+        ctx.fillStyle = n.accent
+          ? neon(n.ac, 0.6 + drive * 0.4)
+          : ink((n.hub ? 0.5 : 0.28) + drive * 0.3);
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, rr, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
     requestAnimationFrame(frame);
@@ -837,7 +892,11 @@ const viz = (() => {
     });
   }
 
-  return { init, pulse };
+  function setMode(m) {
+    mode = m;
+  }
+
+  return { init, pulse, setMode };
 })();
 
 /* ------------------------------------------------------------------ *
@@ -901,6 +960,11 @@ function resetApp() {
     audio.disable();
     els.mic.classList.remove("active");
   }
+  // clear generative background, restore graph visuals for the start screen
+  document.body.classList.remove("has-bg", "imgmode");
+  els.bgimg.style.backgroundImage = "";
+  state.sceneRequested = false;
+  viz.setMode("graph");
   setStatus("");
 }
 
@@ -910,6 +974,14 @@ function resetApp() {
 els.go.addEventListener("click", start);
 els.url.addEventListener("keydown", (e) => {
   if (e.key === "Enter") start();
+});
+els.modes.addEventListener("click", (e) => {
+  const btn = e.target.closest(".mode-btn");
+  if (!btn) return;
+  state.mode = btn.dataset.mode;
+  els.modes
+    .querySelectorAll(".mode-btn")
+    .forEach((b) => b.classList.toggle("active", b === btn));
 });
 els.playPause.addEventListener("click", togglePlay);
 els.mic.addEventListener("click", toggleMic);
