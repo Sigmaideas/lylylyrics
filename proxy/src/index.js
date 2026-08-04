@@ -46,13 +46,13 @@ export default {
 };
 
 /* ---------- generative scene image (Workers AI) ---------- */
-// 80s Japanese city-pop / retro anime illustration look (not photoreal)
+// retro pixel-art / 16-bit game look (not photoreal)
 const STYLE =
-  "1980s Japanese city pop album cover illustration, retro anime aesthetic, " +
-  "hand-drawn cel-shaded artwork, bold neon and pastel gradient palette, " +
-  "magenta cyan purple sunset glow, chrome and vaporwave accents, grainy " +
-  "vintage print texture, nostalgic dreamy mood, flat 2D anime illustration " +
-  "style (NOT photorealistic), no text, no watermark, no faces";
+  "detailed pixel art, 16-bit retro video game art style, crisp visible " +
+  "square pixels, limited color palette, dithering, isometric or side-scroller " +
+  "scenery, neon and pastel sunset tones, nostalgic 1990s arcade / JRPG " +
+  "aesthetic, sharp pixelated edges (NOT photorealistic, NOT smooth), " +
+  "no text, no watermark, no faces";
 
 // distinct "camera angles" so multiple variants of one song differ visually
 const VARIANTS = [
@@ -100,10 +100,9 @@ async function handleScene(url, env) {
   }
   if (!scene) scene = `${title} ${artist} mood, ${angle}, atmospheric scenery`;
 
-  // lead with the illustration style so Flux commits to the retro look
+  // lead with the pixel-art style so Flux commits to the look
   const prompt =
-    "anime illustration, 1980s Japanese city pop album cover art, retro " +
-    "cel-shaded 2D artwork. " +
+    "pixel art, 16-bit retro video game scene, crisp square pixels. " +
     scene +
     ". " +
     STYLE;

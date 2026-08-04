@@ -33,6 +33,7 @@ body {
   z-index: 0;
   background-size: cover;
   background-position: center;
+  image-rendering: pixelated; /* crisp nearest-neighbor upscale of pixel art */
   opacity: 0;
   transition: opacity 2s ease;
 }

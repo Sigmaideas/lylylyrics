@@ -376,7 +376,7 @@ async function generateScene() {
     });
     const r = await fetch(`${LYRICS_PROXY}/scene?${p}`);
     if (!r.ok) throw new Error("scene failed");
-    return URL.createObjectURL(await r.blob());
+    return pixelate(await r.blob()); // crunch into real pixel-art
   };
 
   const preload = (src) =>
@@ -386,6 +386,31 @@ async function generateScene() {
       im.onerror = () => res(null);
       im.src = src;
     });
+
+  // Downscale to a small canvas with smoothing off, then CSS renders it
+  // pixelated → guaranteed crisp pixel-art regardless of the source image.
+  async function pixelate(blob, targetW = 180) {
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = await new Promise((res, rej) => {
+        const im = new Image();
+        im.onload = () => res(im);
+        im.onerror = rej;
+        im.src = url;
+      });
+      const w = targetW;
+      const h = Math.max(1, Math.round((targetW * img.height) / img.width));
+      const c = document.createElement("canvas");
+      c.width = w;
+      c.height = h;
+      const cx = c.getContext("2d");
+      cx.imageSmoothingEnabled = false;
+      cx.drawImage(img, 0, 0, w, h);
+      return c.toDataURL("image/png");
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
 
   try {
     // first image ASAP so the background appears quickly
