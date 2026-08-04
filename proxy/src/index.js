@@ -51,13 +51,24 @@ const STYLE =
   "lighting, muted retro color palette, dreamy, highly detailed, depth of " +
   "field, no text, no watermark, no faces";
 
+// distinct "camera angles" so multiple variants of one song differ visually
+const VARIANTS = [
+  "wide establishing shot",
+  "a different location within the same world, low angle, closer view",
+  "a contrasting time of day (dawn/dusk/night) of the same setting",
+  "a distant bird's-eye aerial view of the same world",
+];
+
 async function handleScene(url, env) {
   const title = (url.searchParams.get("title") || "").slice(0, 120);
   const artist = (url.searchParams.get("artist") || "").slice(0, 80);
+  const variant = Math.max(0, Math.min(9, parseInt(url.searchParams.get("variant") || "0", 10)));
   const lyrics = (url.searchParams.get("lyrics") || "")
     .replace(/\[\d{1,2}:\d{2}(?:[.:]\d{1,3})?\]/g, " ")
     .replace(/\s+/g, " ")
     .slice(0, 500);
+
+  const angle = VARIANTS[variant % VARIANTS.length];
 
   // 1) LLM turns the song into a vivid scene prompt matching its mood/genre
   let scene = "";
@@ -69,27 +80,31 @@ async function handleScene(url, env) {
       "streets; ballad -> quiet misty dawn; acoustic -> sunlit meadow). " +
       "No people, no text. Output ONLY the scene description, one concise " +
       "line, in English, max 40 words.";
-    const user = `Title: ${title}\nArtist: ${artist}\nLyrics: ${lyrics}`;
+    const user =
+      `Title: ${title}\nArtist: ${artist}\nLyrics: ${lyrics}\n` +
+      `Framing for this variant: ${angle}.`;
     const out = await env.AI.run("@cf/meta/llama-3.2-3b-instruct", {
       messages: [
         { role: "system", content: sys },
         { role: "user", content: user },
       ],
       max_tokens: 160,
+      temperature: 0.9,
     });
     scene = (out.response || "").trim().replace(/^["'\s]+|["'\s]+$/g, "");
   } catch {
     scene = "";
   }
-  if (!scene) scene = `${title} ${artist} mood, atmospheric scenery`;
+  if (!scene) scene = `${title} ${artist} mood, ${angle}, atmospheric scenery`;
 
   const prompt = `${scene}. ${STYLE}`;
 
-  // 2) generate the image (Flux schnell — fast)
+  // 2) generate the image (Flux schnell — fast). Vary seed per variant.
   try {
     const img = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", {
       prompt,
       steps: 6,
+      seed: 1000 + variant * 7919,
     });
     const bytes = Uint8Array.from(atob(img.image), (c) => c.charCodeAt(0));
     return new Response(bytes, {

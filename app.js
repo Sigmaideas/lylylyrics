@@ -25,6 +25,7 @@ const els = {
   trackInfo: $("track-info"),
   mic: $("mic"),
   bgimg: $("bgimg"),
+  bgimg2: $("bgimg2"),
   bgshade: $("bgshade"),
   modes: $("modes"),
 };
@@ -304,7 +305,7 @@ async function start() {
   // background mode (graph vs generative image)
   state.sceneRequested = false;
   document.body.classList.remove("has-bg");
-  els.bgimg.style.backgroundImage = "";
+  stopSceneRotation();
   document.body.classList.toggle("imgmode", state.mode === "image");
   viz.setMode(state.mode);
 
@@ -348,35 +349,106 @@ function applyLyrics(data, duration) {
   if (state.mode === "image") generateScene();
 }
 
-// Ask the Worker for a mood-matched scene image (once per song) and fade it in
+// Generate several mood-matched scenes for the song, then crossfade between
+// them over time so the background keeps evolving. All generated once per song.
 async function generateScene() {
   if (state.sceneRequested) return;
   state.sceneRequested = true;
   const { artist, track } = state.meta;
   if (!artist && !track) return;
+
   const snippet = state.lines
-    .slice(0, 12)
+    .slice(0, 16)
     .map((l) => l.text)
     .join(" ")
     .slice(0, 400);
-  const p = new URLSearchParams({
-    title: track || "",
-    artist: artist || "",
-    lyrics: snippet,
-  });
-  try {
+
+  // how many variants — a few more when the track is long enough to show them
+  const dur = safeDuration() || 210;
+  const count = Math.max(2, Math.min(4, Math.round(dur / 55)));
+
+  const fetchVariant = async (variant) => {
+    const p = new URLSearchParams({
+      title: track || "",
+      artist: artist || "",
+      lyrics: snippet,
+      variant: String(variant),
+    });
     const r = await fetch(`${LYRICS_PROXY}/scene?${p}`);
-    if (!r.ok) return;
-    const objUrl = URL.createObjectURL(await r.blob());
-    const im = new Image(); // preload, then reveal
-    im.onload = () => {
-      els.bgimg.style.backgroundImage = `url("${objUrl}")`;
-      document.body.classList.add("has-bg");
-    };
-    im.src = objUrl;
+    if (!r.ok) throw new Error("scene failed");
+    return URL.createObjectURL(await r.blob());
+  };
+
+  const preload = (src) =>
+    new Promise((res) => {
+      const im = new Image();
+      im.onload = () => res(src);
+      im.onerror = () => res(null);
+      im.src = src;
+    });
+
+  try {
+    // first image ASAP so the background appears quickly
+    const first = await preload(await fetchVariant(0));
+    if (!first) return;
+    scenes.urls = [first];
+    scenes.idx = 0;
+    showScene(first, true);
+
+    // fetch the rest in the background, then start rotating
+    for (let v = 1; v < count; v++) {
+      try {
+        const u = await preload(await fetchVariant(v));
+        if (u) scenes.urls.push(u);
+      } catch {
+        /* skip a failed variant */
+      }
+    }
+    if (scenes.urls.length > 1) startSceneRotation(dur);
   } catch {
     /* keep the animated background if generation fails */
   }
+}
+
+// crossfade state
+const scenes = { urls: [], idx: 0, layer: 0, timer: null };
+
+function showScene(url, immediate) {
+  const layers = [els.bgimg, els.bgimg2];
+  const nextLayer = immediate ? 0 : scenes.layer ^ 1;
+  const show = layers[nextLayer];
+  const hide = layers[nextLayer ^ 1];
+  show.style.backgroundImage = `url("${url}")`;
+  // reflow so the ken-burns animation restarts cleanly
+  void show.offsetWidth;
+  show.classList.add("show");
+  hide.classList.remove("show");
+  scenes.layer = nextLayer;
+  document.body.classList.add("has-bg");
+}
+
+function startSceneRotation(dur) {
+  clearInterval(scenes.timer);
+  // spread the changes across the song (min 18s between swaps)
+  const interval = Math.max(18000, (dur * 1000) / (scenes.urls.length + 1));
+  scenes.timer = setInterval(() => {
+    if (!document.body.classList.contains("imgmode") || scenes.urls.length < 2) return;
+    scenes.idx = (scenes.idx + 1) % scenes.urls.length;
+    showScene(scenes.urls[scenes.idx], false);
+  }, interval);
+}
+
+function stopSceneRotation() {
+  clearInterval(scenes.timer);
+  scenes.timer = null;
+  scenes.urls.forEach((u) => URL.revokeObjectURL(u));
+  scenes.urls = [];
+  scenes.idx = 0;
+  scenes.layer = 0;
+  els.bgimg.classList.remove("show");
+  els.bgimg2.classList.remove("show");
+  els.bgimg.style.backgroundImage = "";
+  els.bgimg2.style.backgroundImage = "";
 }
 
 function createPlayer(videoId) {
@@ -544,15 +616,19 @@ function retireFrags() {
 }
 
 function buildNote() {
+  // subtle animated equalizer bars instead of a big ♪
   const el = document.createElement("div");
-  el.className = "frag note s-xl c-dim";
+  el.className = "frag note c-dim";
   el.style.setProperty("--x", "50%");
-  el.style.setProperty("--y", noteCaption ? "44%" : "48%");
+  el.style.setProperty("--y", noteCaption ? "45%" : "50%");
   el.style.setProperty("--rot", "0deg");
   el.style.setProperty("--align", "center");
   const inner = document.createElement("span");
   inner.className = "inner";
-  inner.textContent = "♪";
+  const eq = document.createElement("span");
+  eq.className = "eq";
+  for (let k = 0; k < 5; k++) eq.appendChild(document.createElement("i"));
+  inner.appendChild(eq);
   el.appendChild(inner);
   els.lyrics.appendChild(el);
   activeFrags.push(el);
@@ -583,7 +659,10 @@ function showComposition(i) {
 
   const hero = lineText(i);
   if (!hero) {
-    buildNote(); // intro (before first line) or instrumental
+    // No hero text: only show a subtle placeholder for a genuinely
+    // instrumental / no-lyrics track. During the intro before the first
+    // line of a song that HAS lyrics, show nothing (just the background).
+    if (state.instrumental) buildNote();
     return;
   }
 
@@ -962,7 +1041,7 @@ function resetApp() {
   }
   // clear generative background, restore graph visuals for the start screen
   document.body.classList.remove("has-bg", "imgmode");
-  els.bgimg.style.backgroundImage = "";
+  stopSceneRotation();
   state.sceneRequested = false;
   viz.setMode("graph");
   setStatus("");
