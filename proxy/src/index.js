@@ -46,10 +46,13 @@ export default {
 };
 
 /* ---------- generative scene image (Workers AI) ---------- */
+// 80s Japanese city-pop / retro anime illustration look (not photoreal)
 const STYLE =
-  "cinematic wide establishing shot, filmic 35mm grain, moody atmospheric " +
-  "lighting, muted retro color palette, dreamy, highly detailed, depth of " +
-  "field, no text, no watermark, no faces";
+  "1980s Japanese city pop album cover illustration, retro anime aesthetic, " +
+  "hand-drawn cel-shaded artwork, bold neon and pastel gradient palette, " +
+  "magenta cyan purple sunset glow, chrome and vaporwave accents, grainy " +
+  "vintage print texture, nostalgic dreamy mood, flat 2D anime illustration " +
+  "style (NOT photorealistic), no text, no watermark, no faces";
 
 // distinct "camera angles" so multiple variants of one song differ visually
 const VARIANTS = [
@@ -97,7 +100,13 @@ async function handleScene(url, env) {
   }
   if (!scene) scene = `${title} ${artist} mood, ${angle}, atmospheric scenery`;
 
-  const prompt = `${scene}. ${STYLE}`;
+  // lead with the illustration style so Flux commits to the retro look
+  const prompt =
+    "anime illustration, 1980s Japanese city pop album cover art, retro " +
+    "cel-shaded 2D artwork. " +
+    scene +
+    ". " +
+    STYLE;
 
   // 2) generate the image (Flux schnell — fast). Vary seed per variant.
   try {
