@@ -41,7 +41,8 @@ const state = {
   instrumental: false,
   meta: { artist: "", track: "" },
   playing: false,
-  mode: "graph", // "graph" | "image"
+  mode: "auto", // user choice: "auto" | "graph" | "image"
+  effectiveMode: "graph", // resolved background actually in use
   sceneRequested: false,
 };
 
@@ -302,12 +303,21 @@ async function start() {
   els.nowPlaying.textContent = [artist, track].filter(Boolean).join(" — ");
   els.trackInfo.textContent = [artist, track].filter(Boolean).join(" — ");
 
-  // background mode (graph vs generative image)
+  // background mode: "auto" is resolved from the song's mood, else use choice
   state.sceneRequested = false;
   document.body.classList.remove("has-bg");
   stopSceneRotation();
-  document.body.classList.toggle("imgmode", state.mode === "image");
-  viz.setMode(state.mode);
+
+  if (state.mode === "auto") {
+    // start on graph so something shows instantly, then switch if mood says image
+    state.effectiveMode = "graph";
+    applyBackgroundMode("graph");
+    resolveAutoMode(artist, track, duration); // async: may flip to image + palette
+  } else {
+    state.effectiveMode = state.mode;
+    applyPalette(null);
+    applyBackgroundMode(state.mode);
+  }
 
   setInstrumental(true); // abstract visuals until (or unless) lyrics arrive
   noteCaption = ""; // still searching — just ♪, no "not found" yet
@@ -346,7 +356,50 @@ function applyLyrics(data, duration) {
   paintInitial(); // initial paint
 
   // generate the mood background once, now that we have title/artist + lyrics
-  if (state.mode === "image") generateScene();
+  if (state.effectiveMode === "image") generateScene();
+}
+
+/* ------------------------------------------------------------------ *
+ * Auto mode — classify the song's mood and pick a background + palette
+ * ------------------------------------------------------------------ */
+function applyBackgroundMode(m) {
+  document.body.classList.toggle("imgmode", m === "image");
+  viz.setMode(m);
+}
+
+// mood palette -> single accent colour (subtle UI/lyric tint)
+const PALETTE_ACCENT = {
+  neon: "#22e7ff",
+  sunset: "#ff7a3d",
+  cool: "#5b8cff",
+  warm: "#ffb03d",
+  mono: "#f4f2ee",
+};
+function applyPalette(palette) {
+  const c = PALETTE_ACCENT[palette] || "#ff3b30";
+  document.documentElement.style.setProperty("--accent", c);
+}
+
+async function resolveAutoMode(artist, track, duration) {
+  if (!artist && !track) return;
+  const p = new URLSearchParams({ title: track || "", artist: artist || "" });
+  let mood;
+  try {
+    const r = await fetch(`${LYRICS_PROXY}/mood?${p}`);
+    if (!r.ok) return;
+    mood = await r.json();
+  } catch {
+    return;
+  }
+  if (state.mode !== "auto") return; // user changed their mind / reset
+
+  applyPalette(mood.palette);
+  const want = mood.background === "graph" ? "graph" : "image";
+  if (want !== state.effectiveMode) {
+    state.effectiveMode = want;
+    applyBackgroundMode(want);
+    if (want === "image") generateScene();
+  }
 }
 
 // Generate several mood-matched scenes for the song, then crossfade between
@@ -1068,6 +1121,8 @@ function resetApp() {
   document.body.classList.remove("has-bg", "imgmode");
   stopSceneRotation();
   state.sceneRequested = false;
+  state.effectiveMode = "graph";
+  applyPalette(null); // restore default accent
   viz.setMode("graph");
   setStatus("");
 }

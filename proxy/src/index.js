@@ -38,12 +38,74 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === "/netease") return handleNetease(url);
     if (url.pathname === "/scene") return handleScene(url, env);
+    if (url.pathname === "/mood") return handleMood(url, env);
     if (url.pathname === "/" || url.pathname === "/health") {
       return json({ ok: true, service: "lylylyrics-proxy" });
     }
     return json({ error: "not_found" }, 404);
   },
 };
+
+/* ---------- mood / genre classification (Workers AI) ---------- */
+const MOODS = ["energetic", "chill", "romantic", "melancholic", "dreamy", "dark", "bright"];
+const PALETTES = ["neon", "sunset", "cool", "warm", "mono"];
+
+async function handleMood(url, env) {
+  const title = (url.searchParams.get("title") || "").slice(0, 120);
+  const artist = (url.searchParams.get("artist") || "").slice(0, 80);
+  const lyrics = (url.searchParams.get("lyrics") || "")
+    .replace(/\[\d{1,2}:\d{2}(?:[.:]\d{1,3})?\]/g, " ")
+    .replace(/\s+/g, " ")
+    .slice(0, 400);
+
+  // sensible default if the model is unavailable / unparseable
+  const fallback = { mood: "dreamy", genre: "", background: "image", palette: "sunset" };
+
+  try {
+    const sys =
+      "You classify a song's mood and genre for a lyric visualizer. Respond " +
+      "with ONLY compact JSON, no prose: " +
+      '{"mood":"<energetic|chill|romantic|melancholic|dreamy|dark|bright>",' +
+      '"genre":"<short genre>",' +
+      '"background":"<graph|image>",' +
+      '"palette":"<neon|sunset|cool|warm|mono>"}. ' +
+      "Rule: background=graph for high-energy electronic, dance, EDM, hip-hop, " +
+      "or rock; background=image for melodic, ballad, city pop, acoustic, R&B, " +
+      "or emotional songs.";
+    const user = `Title: ${title}\nArtist: ${artist}\nLyrics: ${lyrics}`;
+    const out = await env.AI.run("@cf/meta/llama-3.2-3b-instruct", {
+      messages: [
+        { role: "system", content: sys },
+        { role: "user", content: user },
+      ],
+      max_tokens: 120,
+      temperature: 0,
+    });
+    const resp = out.response;
+    let parsed = {};
+    if (resp && typeof resp === "object") {
+      parsed = resp; // model already returned parsed JSON
+    } else if (typeof resp === "string") {
+      const m = resp.match(/\{[\s\S]*\}/);
+      if (m) {
+        try {
+          parsed = JSON.parse(m[0]);
+        } catch {
+          parsed = {};
+        }
+      }
+    }
+    const result = {
+      mood: MOODS.includes(parsed.mood) ? parsed.mood : fallback.mood,
+      genre: (parsed.genre || "").toString().slice(0, 40),
+      background: parsed.background === "graph" ? "graph" : "image",
+      palette: PALETTES.includes(parsed.palette) ? parsed.palette : fallback.palette,
+    };
+    return json(result);
+  } catch {
+    return json(fallback);
+  }
+}
 
 /* ---------- generative scene image (Workers AI) ---------- */
 // retro pixel-art / 16-bit game look (not photoreal)
